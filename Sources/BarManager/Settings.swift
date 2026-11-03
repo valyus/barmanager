@@ -8,6 +8,7 @@ enum Settings {
         static let isCollapsed = "isCollapsed"
         static let alwaysHiddenEnabled = "alwaysHiddenEnabled"
         static let hasShownWelcome = "hasShownWelcome"
+        static let showOnHover = "showOnHover"
     }
 
     /// Seconds before the hidden section collapses again. 0 = never.
@@ -24,6 +25,11 @@ enum Settings {
     static var alwaysHiddenEnabled: Bool {
         get { defaults.bool(forKey: Key.alwaysHiddenEnabled) }
         set { defaults.set(newValue, forKey: Key.alwaysHiddenEnabled) }
+    }
+
+    static var showOnHover: Bool {
+        get { defaults.object(forKey: Key.showOnHover) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.showOnHover) }
     }
 
     static var hasShownWelcome: Bool {

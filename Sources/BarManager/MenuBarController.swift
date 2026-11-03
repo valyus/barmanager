@@ -21,6 +21,23 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var autoHideTimer: Timer?
     private var showingAlwaysHidden = false
 
+    // Hover panel
+    private let panel = HiddenItemsPanel()
+    private let hoverTracker = HoverTracker()
+    private var hoverTimer: Timer?
+    private var panelWatchTimer: Timer?
+    private var pointerLeftPanelAt: Date?
+    private var imageCache: [CGWindowID: NSImage] = [:]
+
+    // Temporarily revealing one item that was picked from the panel
+    private var revealWatchTimer: Timer?
+
+    /// True while at least one section is pushed off screen.
+    private var isHidingSomething: Bool {
+        separatorItem.length != Self.separatorLength
+            || (Settings.alwaysHiddenEnabled && alwaysHiddenItem.length == Self.collapsedLength)
+    }
+
     private var isCollapsed: Bool {
         separatorItem.length == Self.collapsedLength
     }
@@ -54,8 +71,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             button.target = self
             button.action = #selector(toggleClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.toolTip = "Click to show/hide icons · ⌥-click to show all · Right-click for options"
+            button.toolTip = "Hover to see hidden icons · Click to show/hide · ⌥-click to show all · Right-click for options"
+            button.addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: hoverTracker,
+                userInfo: nil
+            ))
         }
+        hoverTracker.onEnter = { [weak self] in self?.pointerEnteredArrow() }
+        hoverTracker.onExit = { [weak self] in self?.hoverTimer?.invalidate() }
+        panel.onSelect = { [weak self] item in self?.open(item) }
+        panel.onRequestPermission = { [weak self] in self?.requestScreenRecording() }
         separatorItem.button?.image = Self.separatorImage(double: false)
         separatorItem.button?.toolTip = "Icons left of this line are hidden"
         alwaysHiddenItem.button?.image = Self.separatorImage(double: true)
@@ -81,6 +108,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func toggleClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
+        hoverTimer?.invalidate()
+        hidePanel()
         let isRightClick = event.type == .rightMouseUp || event.modifierFlags.contains(.control)
 
         if isRightClick {
@@ -95,6 +124,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     // MARK: - Expand / collapse
 
     private func expand(showAll: Bool, persist: Bool = true) {
+        stopRevealWatch()
         separatorItem.length = Self.separatorLength
         separatorItem.button?.image = Self.separatorImage(double: false)
 
@@ -123,6 +153,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         if Settings.alwaysHiddenEnabled { hideAlwaysHiddenSection() }
 
+        stopRevealWatch()
         autoHideTimer?.invalidate()
         separatorItem.button?.image = nil
         separatorItem.length = Self.collapsedLength
@@ -158,7 +189,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         autoHideTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             guard let self else { return }
             // Don't snap shut while the user is pointing at (or ⌘-dragging in) the menu bar.
-            if Self.mouseIsInMenuBar() {
+            if Self.mouseIsInMenuBar() || MenuBarItemWindow.somethingIsOpen() || self.panel.isVisible {
                 self.scheduleAutoHide()
             } else if !self.isCollapsed {
                 self.collapse()
@@ -180,6 +211,147 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         toggleItem.button?.image = image
     }
 
+    // MARK: - Hover panel
+
+    private func pointerEnteredArrow() {
+        guard Settings.showOnHover, isHidingSomething, !panel.isVisible else { return }
+        hoverTimer?.invalidate()
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+            self?.showPanel()
+        }
+    }
+
+    private func showPanel() {
+        guard let anchor = toggleItem.button?.window?.frame else { return }
+        let items = hiddenItems()
+        panel.show(items: items, images: imageCache, below: anchor)
+        startPanelWatch()
+
+        let ids = items.map(\.id)
+        Task { @MainActor [weak self] in
+            let fresh = await ItemCapture.capture(ids)
+            guard let self, !fresh.isEmpty else { return }
+            self.imageCache.merge(fresh) { _, new in new }
+            self.panel.update(images: self.imageCache)
+        }
+    }
+
+    private func hidePanel() {
+        panelWatchTimer?.invalidate()
+        panelWatchTimer = nil
+        pointerLeftPanelAt = nil
+        panel.orderOut(nil)
+    }
+
+    /// Closes the panel shortly after the pointer leaves both the arrow and the panel.
+    private func startPanelWatch() {
+        panelWatchTimer?.invalidate()
+        pointerLeftPanelAt = nil
+        panelWatchTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard let arrow = self.toggleItem.button?.window?.frame else { return self.hidePanel() }
+            let zone = arrow.union(self.panel.frame).insetBy(dx: -8, dy: -8)
+            if zone.contains(NSEvent.mouseLocation) {
+                self.pointerLeftPanelAt = nil
+            } else if let left = self.pointerLeftPanelAt {
+                if Date().timeIntervalSince(left) > 0.3 { self.hidePanel() }
+            } else {
+                self.pointerLeftPanelAt = Date()
+            }
+        }
+    }
+
+    /// Every status item currently left of our divider(s), left to right.
+    private func hiddenItems() -> [MenuBarItemWindow] {
+        guard let separator = separatorItem.button?.window?.frame else { return [] }
+        let ownDivider = alwaysHiddenItem.isVisible ? alwaysHiddenItem.button?.window?.frame : nil
+        return MenuBarItemWindow.all().filter { item in
+            guard item.frame.maxX <= separator.minX + 1 else { return false }
+            if let ownDivider, abs(ownDivider.minX - item.frame.minX) < 1, abs(ownDivider.width - item.frame.width) < 1 {
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Slides the hidden section just far enough that `item` is on screen, then clicks it.
+    private func open(_ item: MenuBarItemWindow) {
+        hidePanel()
+        guard let separator = separatorItem.button?.window?.frame else { return }
+        let screen = separatorItem.button?.window?.screen ?? NSScreen.main
+
+        // Distance from the item's left edge to the divider. It doesn't change
+        // when the divider's width does, so we can work out where the item lands.
+        var distance = separator.minX - item.frame.minX
+        if Settings.alwaysHiddenEnabled, alwaysHiddenItem.length == Self.collapsedLength,
+           let doubleDivider = alwaysHiddenItem.button?.window?.frame,
+           item.frame.maxX <= doubleDivider.minX + 1 {
+            distance -= doubleDivider.width - Self.separatorLength
+            alwaysHiddenItem.length = Self.separatorLength
+            alwaysHiddenItem.button?.image = Self.separatorImage(double: true)
+            showingAlwaysHidden = true
+        }
+
+        // Land the item just right of the notch (or the screen's left edge).
+        let visibleLeft = (screen?.auxiliaryTopRightArea?.minX ?? screen?.frame.minX ?? 0) + 12
+        let length = max(Self.separatorLength, separator.maxX - distance - visibleLeft)
+
+        autoHideTimer?.invalidate()
+        separatorItem.button?.image = length > Self.separatorLength ? nil : Self.separatorImage(double: false)
+        separatorItem.length = length
+        updateToggleIcon()
+
+        // Give the menu bar a moment to lay out before clicking.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            if let moved = MenuBarItemWindow.all().first(where: { $0.id == item.id }) {
+                Self.click(at: CGPoint(x: moved.frame.midX, y: moved.frame.midY))
+            }
+            self.startRevealWatch()
+        }
+    }
+
+    private static func click(at point: CGPoint) {
+        guard CGPreflightPostEventAccess() else {
+            // Ask once; until it's granted the item is just revealed for a manual click.
+            CGRequestPostEventAccess()
+            return
+        }
+        let original = CGEvent(source: nil)?.location
+        let source = CGEventSource(stateID: .hidSystemState)
+        CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)?
+            .post(tap: .cghidEventTap)
+        CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)?
+            .post(tap: .cghidEventTap)
+        if let original { CGWarpMouseCursorPosition(original) }
+    }
+
+    /// Hides the revealed item again once its menu closes and the pointer leaves the menu bar.
+    private func startRevealWatch() {
+        stopRevealWatch()
+        let started = Date()
+        revealWatchTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            if Date().timeIntervalSince(started) < 1.5 { return }
+            if Self.mouseIsInMenuBar() || MenuBarItemWindow.somethingIsOpen() || self.panel.isVisible { return }
+            self.stopRevealWatch()
+            self.collapse()
+        }
+    }
+
+    private func stopRevealWatch() {
+        revealWatchTimer?.invalidate()
+        revealWatchTimer = nil
+    }
+
+    private func requestScreenRecording() {
+        hidePanel()
+        if !CGRequestScreenCaptureAccess(),
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     // MARK: - Menu
 
     private func showMenu() {
@@ -197,6 +369,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let delayItem = NSMenuItem(title: "Auto-hide After", action: nil, keyEquivalent: "")
         delayItem.submenu = delayMenu
         menu.addItem(delayItem)
+
+        let hover = NSMenuItem(title: "Show Hidden Icons on Hover", action: #selector(toggleShowOnHover(_:)), keyEquivalent: "")
+        hover.target = self
+        hover.state = Settings.showOnHover ? .on : .off
+        menu.addItem(hover)
 
         let alwaysHidden = NSMenuItem(title: "Enable “Always Hidden” Section", action: #selector(toggleAlwaysHidden(_:)), keyEquivalent: "")
         alwaysHidden.target = self
@@ -229,6 +406,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func setAutoHideDelay(_ sender: NSMenuItem) {
         Settings.autoHideDelay = sender.representedObject as? TimeInterval ?? 10
         if !isCollapsed { scheduleAutoHide() }
+    }
+
+    @objc private func toggleShowOnHover(_ sender: NSMenuItem) {
+        Settings.showOnHover.toggle()
     }
 
     @objc private func toggleAlwaysHidden(_ sender: NSMenuItem) {
@@ -272,7 +453,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         BarManager adds an arrow ( ‹ ) and a thin divider ( | ) to your menu bar.
 
         • Hold ⌘ and drag any menu bar icon to the LEFT of the divider to hide it.
-        • Click the arrow to show or hide those icons.
+        • Hover over the arrow to see all hidden icons in a panel; click one to open it.
+        • Click the arrow to show or hide those icons in the menu bar.
         • ⌥-click the arrow to also reveal the “Always Hidden” section (enable it from the right-click menu, then ⌘-drag icons left of the double divider ‖).
         • Right-click the arrow for settings and Quit.
 
