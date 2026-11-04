@@ -30,5 +30,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
+# Sign with a stable identity when one exists so macOS keeps the Accessibility
+# grant across rebuilds. Override with BARMANAGER_SIGN_ID, or "-" for ad hoc.
+SIGN_ID="${BARMANAGER_SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')}"
+codesign --force --sign "${SIGN_ID:--}" "$APP"
 echo "Built $APP"

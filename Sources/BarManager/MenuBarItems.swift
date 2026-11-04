@@ -1,0 +1,63 @@
+import AppKit
+
+/// A menu bar item window as seen by the window server. On macOS 26 every
+/// status item is hosted by Control Center, so the frame is all we can rely on.
+struct MenuBarItemWindow: Equatable {
+    let id: CGWindowID
+    let pid: pid_t
+    /// Global coordinates with a top-left origin (CGWindowList space). Only `x`
+    /// is compared with AppKit frames, and `x` is the same in both spaces.
+    let frame: CGRect
+
+    static func all() -> [MenuBarItemWindow] {
+        let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        guard let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return list.compactMap { info in
+            guard (info[kCGWindowLayer as String] as? Int) == statusLevel,
+                  let number = info[kCGWindowNumber as String] as? CGWindowID,
+                  let pid = info[kCGWindowOwnerPID as String] as? pid_t,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds) else { return nil }
+            // Real items sit at the very top and are small. This drops popups that
+            // share the level and our own stretched dividers.
+            guard frame.minY < 1, frame.height <= 50, frame.width > 2, frame.width < 600 else { return nil }
+            return MenuBarItemWindow(id: number, pid: pid, frame: frame)
+        }
+        .sorted { $0.frame.minX < $1.frame.minX }
+    }
+
+    /// True while a menu (or a popover-style window the pointer is in) is open,
+    /// so we don't yank an item away while someone is using it.
+    static func somethingIsOpen() -> Bool {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
+        let menuLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        let mouse = NSEvent.mouseLocation
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let mouseCG = CGPoint(x: mouse.x, y: primaryHeight - mouse.y)
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+
+        for info in list {
+            guard let layer = info[kCGWindowLayer as String] as? Int,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds) else { continue }
+            if (info[kCGWindowOwnerPID as String] as? pid_t) == ownPID { continue }
+            if layer == menuLevel { return true }
+            let isMenuBarItem = layer == statusLevel && frame.minY < 1 && frame.height <= 50
+            if layer >= 3, !isMenuBarItem, frame.contains(mouseCG) { return true }
+        }
+        return false
+    }
+}
+
+/// Forwards mouse enter/exit from a tracking area to closures.
+final class HoverTracker: NSResponder {
+    var onEnter: (() -> Void)?
+    var onExit: (() -> Void)?
+
+    override init() { super.init() }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func mouseEntered(with event: NSEvent) { onEnter?() }
+    override func mouseExited(with event: NSEvent) { onExit?() }
+}

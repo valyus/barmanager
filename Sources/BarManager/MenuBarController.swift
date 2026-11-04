@@ -21,16 +21,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var autoHideTimer: Timer?
     private var showingAlwaysHidden = false
 
-    // Hover panel
-    private let panel = HiddenItemsPanel()
+    // Hover & paging
     private let hoverTracker = HoverTracker()
     private var hoverTimer: Timer?
-    private var panelWatchTimer: Timer?
-    private var pointerLeftPanelAt: Date?
-    private var imageCache: [CGWindowID: NSImage] = [:]
+    private var hoverWatchTimer: Timer?
+    private var scrollMonitor: Any?
+    private var scrollAccumulator: CGFloat = 0
+    private var lastPageChange = Date.distantPast
 
-    // Temporarily revealing one item that was picked from the panel
-    private var revealWatchTimer: Timer?
+    /// Hidden-section order (left to right) when the current session began.
+    private var baseline: [CGWindowID] = []
+    /// Pages of `baseline`, nearest the divider first; each page left to right.
+    private var pages: [[CGWindowID]] = []
+    private var pageIndex = 0
+    /// How many items currently sit rotated from the near end to the far end.
+    private var rotation = 0
+    private var isMoving = false
 
     /// True while at least one section is pushed off screen.
     private var isHidingSomething: Bool {
@@ -71,7 +77,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             button.target = self
             button.action = #selector(toggleClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.toolTip = "Hover to see hidden icons · Click to show/hide · ⌥-click to show all · Right-click for options"
+            button.toolTip = "Hover to show hidden icons · Click or scroll for the next page · ⌥-click to show all · Right-click for options"
             button.addTrackingArea(NSTrackingArea(
                 rect: .zero,
                 options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
@@ -81,8 +87,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         hoverTracker.onEnter = { [weak self] in self?.pointerEnteredArrow() }
         hoverTracker.onExit = { [weak self] in self?.hoverTimer?.invalidate() }
-        panel.onSelect = { [weak self] item in self?.open(item) }
-        panel.onRequestPermission = { [weak self] in self?.requestScreenRecording() }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.handleScroll(event)
+            return event
+        }
         separatorItem.button?.image = Self.separatorImage(double: false)
         separatorItem.button?.toolTip = "Icons left of this line are hidden"
         alwaysHiddenItem.button?.image = Self.separatorImage(double: true)
@@ -109,7 +117,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func toggleClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
         hoverTimer?.invalidate()
-        hidePanel()
         let isRightClick = event.type == .rightMouseUp || event.modifierFlags.contains(.control)
 
         if isRightClick {
@@ -117,14 +124,19 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         } else if event.modifierFlags.contains(.option) {
             if showingAlwaysHidden { collapse() } else { expand(showAll: true) }
         } else {
-            if isCollapsed { expand(showAll: false) } else { collapse() }
+            if isCollapsed {
+                beginSession(byHover: false)
+            } else if !showingAlwaysHidden, pageIndex < pages.count - 1 {
+                showPage(pageIndex + 1)
+            } else {
+                collapse()
+            }
         }
     }
 
     // MARK: - Expand / collapse
 
     private func expand(showAll: Bool, persist: Bool = true) {
-        stopRevealWatch()
         separatorItem.length = Self.separatorLength
         separatorItem.button?.image = Self.separatorImage(double: false)
 
@@ -153,13 +165,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         if Settings.alwaysHiddenEnabled { hideAlwaysHiddenSection() }
 
-        stopRevealWatch()
         autoHideTimer?.invalidate()
+        hoverWatchTimer?.invalidate()
         separatorItem.button?.image = nil
         separatorItem.length = Self.collapsedLength
         showingAlwaysHidden = false
+        pages = []
+        pageIndex = 0
         updateToggleIcon()
         Settings.isCollapsed = true
+        restoreOrderWhenHidden()
     }
 
     private func hideAlwaysHiddenSection() {
@@ -189,7 +204,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         autoHideTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             guard let self else { return }
             // Don't snap shut while the user is pointing at (or ⌘-dragging in) the menu bar.
-            if Self.mouseIsInMenuBar() || MenuBarItemWindow.somethingIsOpen() || self.panel.isVisible {
+            if self.isMoving || Self.mouseIsInMenuBar() || MenuBarItemWindow.somethingIsOpen() {
                 self.scheduleAutoHide()
             } else if !self.isCollapsed {
                 self.collapse()
@@ -208,148 +223,248 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let name = isCollapsed ? "chevron.left" : "chevron.right"
         let image = NSImage(systemSymbolName: name, accessibilityDescription: isCollapsed ? "Show hidden icons" : "Hide icons")
         image?.isTemplate = true
-        toggleItem.button?.image = image
+        guard let button = toggleItem.button else { return }
+        button.image = image
+
+        // Page indicator, e.g. "2/3", while there's more than one page.
+        let paging = !isCollapsed && !showingAlwaysHidden && pages.count > 1
+        if paging {
+            button.attributedTitle = NSAttributedString(
+                string: "\(pageIndex + 1)/\(pages.count)",
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)]
+            )
+            button.imagePosition = .imageTrailing
+            toggleItem.length = NSStatusItem.variableLength
+        } else {
+            button.title = ""
+            button.imagePosition = .imageOnly
+            toggleItem.length = NSStatusItem.squareLength
+        }
     }
 
-    // MARK: - Hover panel
+    // MARK: - Hover & paging
 
     private func pointerEnteredArrow() {
-        guard Settings.showOnHover, isHidingSomething, !panel.isVisible else { return }
+        guard Settings.showOnHover, isCollapsed, !isMoving else { return }
         hoverTimer?.invalidate()
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
-            self?.showPanel()
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+            guard let self, self.isCollapsed else { return }
+            self.beginSession(byHover: true)
         }
     }
 
-    private func showPanel() {
-        guard let anchor = toggleItem.button?.window?.frame else { return }
-        let items = hiddenItems()
-        panel.show(items: items, images: imageCache, below: anchor)
-        startPanelWatch()
-
-        let ids = items.map(\.id)
-        Task { @MainActor [weak self] in
-            let fresh = await ItemCapture.capture(ids)
-            guard let self, !fresh.isEmpty else { return }
-            self.imageCache.merge(fresh) { _, new in new }
-            self.panel.update(images: self.imageCache)
+    /// Shows the hidden section, split into pages that each fit on screen.
+    private func beginSession(byHover: Bool) {
+        guard !isMoving else { return }
+        if rotation == 0 {
+            let items = hiddenSection()
+            baseline = items.map(\.id)
+            pages = makePages(items)
+        } else {
+            pages = makePages(baselineItems())
         }
+        pageIndex = 0
+        if pages.count > 1, !ItemMover.hasPermission {
+            ItemMover.requestPermission() // paging needs Accessibility
+            pages = []
+        }
+
+        if rotation == 0 {
+            expand(showAll: false, persist: !byHover)
+        } else {
+            showPage(0) // a previous restore didn't finish
+        }
+        if byHover { startHoverWatch() }
     }
 
-    private func hidePanel() {
-        panelWatchTimer?.invalidate()
-        panelWatchTimer = nil
-        pointerLeftPanelAt = nil
-        panel.orderOut(nil)
-    }
-
-    /// Closes the panel shortly after the pointer leaves both the arrow and the panel.
-    private func startPanelWatch() {
-        panelWatchTimer?.invalidate()
-        pointerLeftPanelAt = nil
-        panelWatchTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            guard let arrow = self.toggleItem.button?.window?.frame else { return self.hidePanel() }
-            let zone = arrow.union(self.panel.frame).insetBy(dx: -8, dy: -8)
-            if zone.contains(NSEvent.mouseLocation) {
-                self.pointerLeftPanelAt = nil
-            } else if let left = self.pointerLeftPanelAt {
-                if Date().timeIntervalSince(left) > 0.3 { self.hidePanel() }
-            } else {
-                self.pointerLeftPanelAt = Date()
+    /// Hides everything again once the pointer has left the menu bar and no menu is open.
+    private func startHoverWatch() {
+        hoverWatchTimer?.invalidate()
+        var lastActive = Date()
+        hoverWatchTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            if self.isMoving || Self.mouseIsInMenuBar() || MenuBarItemWindow.somethingIsOpen() {
+                lastActive = Date()
+            } else if self.isCollapsed {
+                timer.invalidate()
+            } else if Date().timeIntervalSince(lastActive) > 0.8 {
+                timer.invalidate()
+                self.collapse()
             }
         }
     }
 
-    /// Every status item currently left of our divider(s), left to right.
-    private func hiddenItems() -> [MenuBarItemWindow] {
-        guard let separator = separatorItem.button?.window?.frame else { return [] }
-        let ownDivider = alwaysHiddenItem.isVisible ? alwaysHiddenItem.button?.window?.frame : nil
-        return MenuBarItemWindow.all().filter { item in
-            guard item.frame.maxX <= separator.minX + 1 else { return false }
-            if let ownDivider, abs(ownDivider.minX - item.frame.minX) < 1, abs(ownDivider.width - item.frame.width) < 1 {
-                return false
-            }
-            return true
-        }
+    private func handleScroll(_ event: NSEvent) {
+        guard event.window != nil, event.window === toggleItem.button?.window,
+              !isCollapsed, !isMoving, pages.count > 1, event.momentumPhase.isEmpty,
+              Date().timeIntervalSince(lastPageChange) > 0.4 else { return }
+        let delta = abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) ? event.scrollingDeltaY : -event.scrollingDeltaX
+        scrollAccumulator += event.hasPreciseScrollingDeltas ? delta : delta * 10
+        guard abs(scrollAccumulator) > 20 else { return }
+        let step = scrollAccumulator < 0 ? 1 : -1
+        scrollAccumulator = 0
+        showPage((pageIndex + step + pages.count) % pages.count)
     }
 
-    /// Slides the hidden section just far enough that `item` is on screen, then clicks it.
-    private func open(_ item: MenuBarItemWindow) {
-        hidePanel()
-        guard let separator = separatorItem.button?.window?.frame else { return }
-        let screen = separatorItem.button?.window?.screen ?? NSScreen.main
+    /// Rotates the hidden items so page `index` sits next to the divider.
+    /// The shuffle happens while the section is pushed off screen.
+    private func showPage(_ index: Int) {
+        guard !isMoving else { return }
+        let target = pages.prefix(index).reduce(0) { $0 + $1.count }
+        lastPageChange = Date()
+        pageIndex = index
 
-        // Distance from the item's left edge to the divider. It doesn't change
-        // when the divider's width does, so we can work out where the item lands.
-        var distance = separator.minX - item.frame.minX
-        if Settings.alwaysHiddenEnabled, alwaysHiddenItem.length == Self.collapsedLength,
-           let doubleDivider = alwaysHiddenItem.button?.window?.frame,
-           item.frame.maxX <= doubleDivider.minX + 1 {
-            distance -= doubleDivider.width - Self.separatorLength
-            alwaysHiddenItem.length = Self.separatorLength
-            alwaysHiddenItem.button?.image = Self.separatorImage(double: true)
-            showingAlwaysHidden = true
-        }
-
-        // Land the item just right of the notch (or the screen's left edge).
-        let visibleLeft = (screen?.auxiliaryTopRightArea?.minX ?? screen?.frame.minX ?? 0) + 12
-        let length = max(Self.separatorLength, separator.maxX - distance - visibleLeft)
-
-        autoHideTimer?.invalidate()
-        separatorItem.button?.image = length > Self.separatorLength ? nil : Self.separatorImage(double: false)
-        separatorItem.length = length
-        updateToggleIcon()
-
-        // Give the menu bar a moment to lay out before clicking.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self else { return }
-            if let moved = MenuBarItemWindow.all().first(where: { $0.id == item.id }) {
-                Self.click(at: CGPoint(x: moved.frame.midX, y: moved.frame.midY))
-            }
-            self.startRevealWatch()
-        }
-    }
-
-    private static func click(at point: CGPoint) {
-        guard CGPreflightPostEventAccess() else {
-            // Ask once; until it's granted the item is just revealed for a manual click.
-            CGRequestPostEventAccess()
+        if target == rotation {
+            expand(showAll: false, persist: false)
             return
         }
-        let original = CGEvent(source: nil)?.location
-        let source = CGEventSource(stateID: .hidSystemState)
-        CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)?
-            .post(tap: .cghidEventTap)
-        CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)?
-            .post(tap: .cghidEventTap)
-        if let original { CGWarpMouseCursorPosition(original) }
-    }
-
-    /// Hides the revealed item again once its menu closes and the pointer leaves the menu bar.
-    private func startRevealWatch() {
-        stopRevealWatch()
-        let started = Date()
-        revealWatchTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        isMoving = true
+        autoHideTimer?.invalidate()
+        separatorItem.button?.image = nil
+        separatorItem.length = Self.collapsedLength
+        updateToggleIcon()
+        rotate(to: target) { [weak self] in
             guard let self else { return }
-            if Date().timeIntervalSince(started) < 1.5 { return }
-            if Self.mouseIsInMenuBar() || MenuBarItemWindow.somethingIsOpen() || self.panel.isVisible { return }
-            self.stopRevealWatch()
-            self.collapse()
+            self.isMoving = false
+            self.expand(showAll: false, persist: false)
         }
     }
 
-    private func stopRevealWatch() {
-        revealWatchTimer?.invalidate()
-        revealWatchTimer = nil
+    /// Puts the original order back after a session that changed pages.
+    private func restoreOrderWhenHidden() {
+        guard rotation != 0, !isMoving else { return }
+        isMoving = true
+        rotate(to: 0) { [weak self] in self?.isMoving = false }
     }
 
-    private func requestScreenRecording() {
-        hidePanel()
-        if !CGRequestScreenCaptureAccess(),
-           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
+    /// Rotates the hidden section until `target` items have moved from the near end
+    /// of `baseline` to its far end, taking whichever direction needs fewer moves.
+    private func rotate(to target: Int, completion: @escaping () -> Void) {
+        // Let the menu bar finish laying out the collapsed section first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return completion() }
+            let bounds = self.sectionBounds()
+            let baseline = self.baseline
+            let current = self.rotation
+            ItemMover.queue.async {
+                let n = baseline.count
+                var achieved: Int? = current
+                if n > 1 {
+                    let forward = ((target - current) % n + n) % n
+                    let ok = forward <= n - forward
+                        ? Self.rotateForward(forward, bounds: bounds)
+                        : Self.rotateBack(n - forward, bounds: bounds)
+                    let order = Self.hiddenSection(bounds).map(\.id)
+                    let expected = Array(baseline.suffix(target) + baseline.prefix(n - target))
+                    if ok, order == expected {
+                        achieved = target
+                    } else {
+                        NSLog("BarManager: hidden icons ended up out of order; keeping the new order")
+                        achieved = nil
+                    }
+                }
+                let order = Self.hiddenSection(bounds)
+                DispatchQueue.main.async {
+                    if let achieved {
+                        self.rotation = achieved
+                    } else {
+                        // Something moved unexpectedly. Treat the current order as the original.
+                        self.baseline = order.map(\.id)
+                        self.rotation = 0
+                        self.pages = self.makePages(order)
+                        self.pageIndex = 0
+                    }
+                    completion()
+                }
+            }
         }
+    }
+
+    /// Moves the `count` items nearest the divider to the far end, keeping their order.
+    private static func rotateForward(_ count: Int, bounds: SectionBounds) -> Bool {
+        guard count > 0 else { return true }
+        let items = hiddenSection(bounds)
+        guard count < items.count, let farthest = items.first else { return false }
+        var anchor = farthest.id
+        var first = true
+        var ok = true
+        ItemMover.batch {
+            for id in items.suffix(count).map(\.id) {
+                let fresh = hiddenSection(bounds)
+                guard let item = fresh.first(where: { $0.id == id }),
+                      let target = fresh.first(where: { $0.id == anchor }),
+                      ItemMover.move(item, to: first ? .leftOf(target) : .rightOf(target)) else { ok = false; return }
+                anchor = id
+                first = false
+            }
+        }
+        return ok
+    }
+
+    /// Moves the `count` items at the far end back next to the divider, keeping their order.
+    private static func rotateBack(_ count: Int, bounds: SectionBounds) -> Bool {
+        guard count > 0 else { return true }
+        let items = hiddenSection(bounds)
+        guard count < items.count else { return false }
+        var ok = true
+        ItemMover.batch {
+            for id in items.prefix(count).map(\.id) {
+                let fresh = hiddenSection(bounds)
+                guard let item = fresh.first(where: { $0.id == id }), let nearest = fresh.last,
+                      ItemMover.move(item, to: .rightOf(nearest)) else { ok = false; return }
+            }
+        }
+        return ok
+    }
+
+    /// Horizontal span of the regular hidden section: right of the "always hidden"
+    /// divider (if any) and left of the normal divider.
+    private struct SectionBounds {
+        let minX: CGFloat
+        let maxX: CGFloat
+    }
+
+    private func sectionBounds() -> SectionBounds {
+        let separator = separatorItem.button?.window?.frame
+        let doubleDivider = Settings.alwaysHiddenEnabled ? alwaysHiddenItem.button?.window?.frame : nil
+        return SectionBounds(minX: doubleDivider?.maxX ?? -.greatestFiniteMagnitude,
+                             maxX: separator?.minX ?? -.greatestFiniteMagnitude)
+    }
+
+    private static func hiddenSection(_ bounds: SectionBounds) -> [MenuBarItemWindow] {
+        MenuBarItemWindow.all().filter { $0.frame.minX >= bounds.minX - 1 && $0.frame.maxX <= bounds.maxX + 1 }
+    }
+
+    private func hiddenSection() -> [MenuBarItemWindow] { Self.hiddenSection(sectionBounds()) }
+
+    private func baselineItems() -> [MenuBarItemWindow] {
+        let byID = Dictionary(hiddenSection().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return baseline.compactMap { byID[$0] }
+    }
+
+    /// Splits items (left to right) into pages that fit between the notch, or a
+    /// strip kept free for app menus on other screens, and the divider. Nearest page first.
+    private func makePages(_ items: [MenuBarItemWindow]) -> [[CGWindowID]] {
+        guard let separator = separatorItem.button?.window?.frame,
+              let screen = separatorItem.button?.window?.screen ?? NSScreen.main else { return [] }
+        let visibleLeft = screen.auxiliaryTopRightArea?.minX ?? (screen.frame.minX + 400)
+        // Leave room for the divider and the page indicator next to the arrow.
+        let available = max(separator.maxX - Self.separatorLength - 40 - visibleLeft, 80)
+
+        var pages: [[CGWindowID]] = []
+        var page: [CGWindowID] = []
+        var width: CGFloat = 0
+        for item in items.reversed() {
+            if !page.isEmpty, width + item.frame.width > available {
+                pages.append(page)
+                page = []
+                width = 0
+            }
+            page.insert(item.id, at: 0)
+            width += item.frame.width
+        }
+        if !page.isEmpty { pages.append(page) }
+        return pages
     }
 
     // MARK: - Menu
@@ -437,11 +552,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func showHelp() { Self.showHowTo() }
 
-    @objc private func quit() {
-        // Restore normal widths so nothing stays pushed off-screen after quitting.
+    @objc private func quit() { NSApp.terminate(nil) }
+
+    /// Called as the app quits: put the hidden icons back in their original
+    /// order and restore normal widths so nothing stays pushed off screen.
+    func prepareForTermination() {
+        if rotation != 0, !isMoving {
+            separatorItem.length = Self.collapsedLength
+            var done = false
+            rotate(to: 0) { done = true }
+            let deadline = Date().addingTimeInterval(5)
+            while !done, Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+        }
         separatorItem.length = Self.separatorLength
         alwaysHiddenItem.length = Self.separatorLength
-        NSApp.terminate(nil)
     }
 
     // MARK: - Alerts
@@ -453,8 +579,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         BarManager adds an arrow ( ‹ ) and a thin divider ( | ) to your menu bar.
 
         • Hold ⌘ and drag any menu bar icon to the LEFT of the divider to hide it.
-        • Hover over the arrow to see all hidden icons in a panel; click one to open it.
-        • Click the arrow to show or hide those icons in the menu bar.
+        • Hover over the arrow to show those icons. If they don’t all fit, click the arrow (or scroll over it) for the next page.
+        • Move the pointer away and they hide again.
         • ⌥-click the arrow to also reveal the “Always Hidden” section (enable it from the right-click menu, then ⌘-drag icons left of the double divider ‖).
         • Right-click the arrow for settings and Quit.
 
