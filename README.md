@@ -1,34 +1,48 @@
 # BarManager
 
-A tiny macOS menu bar app that hides menu bar icons.
+A small macOS menu bar app that hides the menu bar icons you don't need to see all the time, and shows them again with a click.
 
-## Build & run
+- **What it does:** [docs/FEATURES.md](docs/FEATURES.md)
+- **What changed:** [CHANGELOG.md](CHANGELOG.md)
+
+Requires macOS 14 or later.
+
+## Install
+
+Download the latest `.dmg` from the GitHub Releases page, open it, and drag BarManager to Applications. The first time you open it, BarManager shows a short how-to.
+
+## Build from source
 
 ```bash
-./build.sh && open build/BarManager.app
+scripts/build.sh && open build/BarManager.app
 ```
 
-Copy `build/BarManager.app` to `/Applications` if you want "Launch at Login" to work reliably.
+`scripts/build.sh` signs with your Developer ID or Apple Development certificate if you have one, so macOS keeps BarManager's permissions across rebuilds. With an ad-hoc signature (`BARMANAGER_SIGN_ID=-`), macOS forgets them after each build. Copy the app to `/Applications` if you want Launch at Login to work reliably.
 
-## Use
+Run the tests with:
 
-- **⌘-drag** any menu bar icon to the left of the thin divider `|` to hide it.
-- **Hover** over the arrow to show the hidden icons. They're the real icons, so they work as usual. Move the pointer away and they hide again.
-- If they don't all fit (say, next to the notch), they're split into pages and the arrow shows which one you're on, like `1/3`. **Click** the arrow or **scroll** over it for the next page. Clicking on the last page hides them.
-- If hovering is off (right-click → Show Hidden Icons on Hover), **click** the arrow to show/hide those icons. They hide again on their own after 10 s (change under right-click → Auto-hide After).
-- **⌥-click** the arrow to also reveal the optional "Always Hidden" section (turn it on from the right-click menu, then ⌘-drag icons left of the double divider `‖`).
-- **Right-click** the arrow for settings and Quit.
+```bash
+swift test
+```
 
-Keep the arrow to the right of the divider. The app refuses to collapse if it isn't, so you can't hide the arrow by accident.
+## Releasing
 
-## Permissions
+1. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under a new `## [x.y.z] - YYYY-MM-DD` heading.
+2. Put the same `x.y.z` in [VERSION](VERSION) and commit.
+3. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
 
-Paging needs **Accessibility** permission, because BarManager rearranges your icons with simulated ⌘-drags. macOS asks the first time there's more than one page. Without it you still get the first page.
+The **Release** workflow then tests, signs with Developer ID, notarizes, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. It needs these repository secrets:
 
-`build.sh` signs with your Apple Development certificate if you have one, so the permission survives rebuilds. With an ad-hoc signature macOS forgets it after each build.
+| Secret | What it is |
+|---|---|
+| `DEVELOPER_ID_P12` | Your "Developer ID Application" certificate exported as `.p12`, base64-encoded |
+| `DEVELOPER_ID_P12_PASSWORD` | The password of that `.p12` |
+| `NOTARY_KEY_P8` | An App Store Connect API key (`AuthKey_XXXX.p8`), base64-encoded |
+| `NOTARY_KEY_ID` | That key's ID |
+| `NOTARY_ISSUER` | Your App Store Connect issuer ID |
 
-## How it works
+To package locally, run `scripts/package.sh` after building. It notarizes too when `NOTARY_KEY_PATH`, `NOTARY_KEY_ID` and `NOTARY_ISSUER` are set.
 
-The divider is an `NSStatusItem`. To collapse, the app makes it 10,000 pt wide, which pushes every item to its left off the screen. Item positions persist through `autosaveName`.
+## Checks
 
-To show another page, BarManager pushes the hidden section off screen and moves the next page's icons next to the divider using ⌘-drags aimed at each icon's window, then brings the section back. When the icons hide again (or the app quits), it moves them back into your original order.
+The **CI** workflow runs on every push to `main` and on every pull request: a release build with warnings treated as errors, the tests, an ad-hoc signed app bundle with its `Info.plist` and signature checked, a check that `CHANGELOG.md` has an entry for the current version or `[Unreleased]`, and packaging. The packaged build is attached to the run for 14 days.

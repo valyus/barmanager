@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, test & package
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the build number is the commit count
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build (warnings are errors)
+        run: swift build -c release -Xswiftc -warnings-as-errors
+
+      - name: Test
+        run: swift test
+
+      - name: Build app bundle
+        run: BARMANAGER_SIGN_ID=- scripts/build.sh
+
+      - name: Check bundle
+        run: |
+          plutil -lint build/BarManager.app/Contents/Info.plist
+          codesign --verify --strict --verbose=2 build/BarManager.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' build/BarManager.app/Contents/Info.plist)" = "$(tr -d '[:space:]' < VERSION)"
+
+      - name: Changelog has an entry for this version or Unreleased
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          grep -Eq "^## \[(Unreleased|$v)\]" CHANGELOG.md
+
+      - name: Package
+        run: scripts/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BarManager-${{ github.sha }}
+          path: dist/
+          retention-days: 14
