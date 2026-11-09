@@ -13,7 +13,7 @@ import ServiceManagement
 final class MenuBarController: NSObject, NSMenuDelegate {
     private static let collapsedLength: CGFloat = 10_000
     private static let separatorLength: CGFloat = 8
-    private static let toggleLength: CGFloat = 28
+    private static let toggleLength: CGFloat = 22
 
     private let toggleItem: NSStatusItem
     private let separatorItem: NSStatusItem
@@ -260,12 +260,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             .withSymbolConfiguration(config)
         guard let button = toggleItem.button else { return }
 
-        // While paging, a small raised label at the arrow's top right: "2/3".
+        // While paging, the current page number raised at the arrow's top right.
         let paging = looksOpen && !showingAlwaysHidden && pages.count > 1
         let label: String?
         let spoken: String?
         if paging {
-            label = "\(pageIndex + 1)/\(pages.count)"
+            label = "\(pageIndex + 1)"
             spoken = "Page \(pageIndex + 1) of \(pages.count)"
         } else {
             label = nil
@@ -958,9 +958,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// shift when the number comes and goes or gets more digits.
     private static func toggleImage(symbol: NSImage, named name: String, superscript: String?) -> NSImage {
         let canvas = NSSize(width: toggleLength - 2, height: 18)
-        // The symbol always sits in the same box on the left, scaled down if needed;
-        // the label gets the top-right corner, wide enough for "2/3".
-        let box = NSRect(x: 1, y: 2, width: 13, height: 14)
+        // The symbol always sits in the same box in the middle, scaled down if
+        // needed; the page label, when there is one, goes in the top-right corner.
+        let box = NSRect(x: (canvas.width - 13) / 2, y: 2, width: 13, height: 14)
         let scale = min(1, box.width / max(symbol.size.width, 1), box.height / max(symbol.size.height, 1))
         let symbolSize = NSSize(width: symbol.size.width * scale, height: symbol.size.height * scale)
         // Center the visible shape, not the symbol's padded image: ‹ and › are
@@ -971,7 +971,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         let text = superscript.map {
             NSAttributedString(string: $0, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold),
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 7, weight: .bold),
                 .foregroundColor: NSColor.black,
             ])
         }

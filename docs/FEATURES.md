@@ -21,7 +21,7 @@ BarManager adds two things to the right side of your menu bar: an **arrow** and 
 
 If the hidden icons don't all fit, for example next to the notch, BarManager splits them into pages.
 
-- The arrow shows which page you're on as a small label at its top right, like `1/3`.
+- The arrow shows which page you're on as a small number at its top right, like `2`. VoiceOver reads it as "Page 2 of 3".
 - **Click** the arrow or **scroll** over it for the next page. Clicking on the last page hides them.
 - When the icons hide again, or when you quit, BarManager puts them back in your original order.
 - Paging needs **Accessibility** permission (see [Permissions](#permissions)). Without it you still get the first page.
@@ -77,7 +77,7 @@ A soft sound plays when the icons show and when they hide. It doesn't play when 
 
 Choose the arrow's look under right-click → **Arrow Icon**: Chevron (default), Triangle, Arrow, Circle, Dots or Eye. Each has a picture in the menu and changes right away.
 
-The arrow always keeps the same size and position, whatever its state, style or label, so the icons next to it never shift.
+The arrow takes a narrow 22 pt spot, always keeps the same size and sits centered in it, whatever its state, style or label, so the icons next to it never shift.
 
 ## Other settings
 

@@ -17,8 +17,9 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 
 ### Changed
 - Clicking the arrow shows hidden icons. Hovering is now off by default; turn it back on under right-click → Show Hidden Icons on Hover.
-- The page label, like `2/3`, is drawn small at the arrow's top right instead of beside it.
-- The arrow always keeps the same size and position, so it and the icons next to it no longer shift when it changes.
+- While paging, the arrow shows just the current page number, small at its top right, instead of a label like `2/3` beside it.
+- The arrow takes up less room in the menu bar.
+- The arrow always keeps the same size and sits centered in its spot, so it and the icons next to it no longer shift when it changes.
 - `build.sh` moved to `scripts/build.sh`.
 
 ### Fixed
