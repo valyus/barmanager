@@ -19,7 +19,7 @@ struct MenuBarItemWindow: Equatable {
                   let bounds = info[kCGWindowBounds as String] as? NSDictionary,
                   let frame = CGRect(dictionaryRepresentation: bounds) else { return nil }
             // Real items sit at the very top and are small. This drops popups that
-            // share the level and our own stretched dividers.
+            // share the level and our own stretched items.
             guard frame.minY < 1, frame.height <= 50, frame.width > 2, frame.width < 600 else { return nil }
             return MenuBarItemWindow(id: number, pid: pid, frame: frame)
         }

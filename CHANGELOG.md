@@ -16,14 +16,17 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 - [docs/FEATURES.md](docs/FEATURES.md), describing every feature.
 
 ### Changed
+- The thin divider `|` is gone. The arrow itself is now the boundary: icons left of the arrow are hidden, icons right of it stay visible. Icons you kept visible between the old divider and the arrow are now hidden; ⌘-drag them to the right of the arrow to keep them visible.
 - Clicking the arrow shows hidden icons. Hovering is now off by default; turn it back on under right-click → Show Hidden Icons on Hover.
-- While paging, the arrow shows just the current page number, small at its top right, instead of a label like `2/3` beside it.
 - The arrow takes up less room in the menu bar.
 - The arrow always keeps the same size and sits centered in its spot, so it and the icons next to it no longer shift when it changes.
 - `build.sh` moved to `scripts/build.sh`.
 
 ### Fixed
 - The right-click menu no longer pauses while BarManager looks up which app owns each icon.
+
+### Removed
+- Pages. Clicking or scrolling over the arrow no longer cycles through hidden icons that don't fit. When the arrow is clicked, all hidden icons show at once, and any that don't fit next to the notch or the app's menus stay out of sight. Paging rearranged icons with simulated drags, which made the pointer jump around the screen.
 
 ## [1.0.0] - 2026-11-04
 
