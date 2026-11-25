@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Hardened runtime: lets Location Services answer, which macOS requires before it gives out the Wi‑Fi network name (Wi‑Fi triggers). -->
+    <key>com.apple.security.personal-information.location</key><true/>
+</dict>
+</plist>

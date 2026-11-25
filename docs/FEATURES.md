@@ -128,6 +128,7 @@ Triggers act on their own when something happens. Add them under Settings → **
 | An app is open | chosen from the apps running now |
 | An app is in front | |
 | During certain hours | can run past midnight, like 22:00 to 07:00 |
+| Connected to a Wi‑Fi network | typed in, or **Use Current** for the one you're on; the name must match exactly, including capitals |
 | The network changes | Wi‑Fi, cable or VPN connects or disconnects |
 
 Then either:
@@ -135,7 +136,9 @@ Then either:
 - **Show hidden icons.** For a lasting condition, they stay open while it's true and the normal auto-hide takes over when it ends. For a network change, they show and then hide after the usual auto-hide delay.
 - **Switch to a profile** when the condition starts.
 
-Switch each trigger on or off, or delete it, in the list. Conditions are checked every 10 seconds and whenever apps or displays change.
+Switch each trigger on or off, or delete it, in the list. Conditions are checked every 10 seconds and whenever apps, displays or the network change.
+
+A Wi‑Fi network trigger needs **Location Services**: macOS shares the Wi‑Fi name only with apps allowed to use it. BarManager asks the first time you add one or click **Use Current**. Without it the trigger never starts. BarManager reads only the network name, not your location.
 
 ## Appearance
 
@@ -182,6 +185,7 @@ Right-click the arrow for:
 |---|---|---|
 | **Accessibility** | App names in the lists, search, shortcuts for single icons, the bar below the menu bar, the Icons tab | Icons listed without names; search and the bar ask for it; the arrow shows icons in the menu bar |
 | **Screen Recording** | Show icons when they change (a small snapshot of each hidden icon every 2 s), real pictures in the bar below the menu bar | That feature stays inactive; the bar shows app icons |
+| **Location Services** | [Wi‑Fi network triggers](#triggers): macOS treats the Wi‑Fi name as location. Only the name is read | Wi‑Fi network triggers never start. Listed under Settings → General → Permissions once you have one |
 
 macOS asks for each one the first time it's needed. Snapshots stay in memory only; nothing is saved or sent anywhere. After granting Screen Recording you may need to quit and reopen BarManager.
 

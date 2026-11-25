@@ -65,6 +65,23 @@ final class TriggerTests: XCTestCase {
         XCTAssertFalse(TriggerCondition.batteryBelow(percent: 100).isMet(in: state))
     }
 
+    func testWiFiNetwork() throws {
+        var state = SystemState()
+        let home = TriggerCondition.wifiNetwork(name: "Home")
+        XCTAssertFalse(home.isMet(in: state), "no Wi‑Fi, or no Location Services permission")
+        state.wifiNetwork = "Home"
+        XCTAssertTrue(home.isMet(in: state))
+        state.wifiNetwork = "home"
+        XCTAssertFalse(home.isMet(in: state), "network names are case-sensitive")
+        XCTAssertTrue(home.needsWiFi)
+        XCTAssertFalse(home.isEvent)
+        XCTAssertFalse(TriggerCondition.networkChanged.needsWiFi)
+
+        let rule = TriggerRule(condition: home, action: .showHiddenIcons)
+        let decoded = try JSONDecoder().decode(TriggerRule.self, from: JSONEncoder().encode(rule))
+        XCTAssertEqual(decoded, rule)
+    }
+
     func testTimeRangeWrapsPastMidnight() {
         var state = SystemState()
         let night = TriggerCondition.timeRange(start: 22 * 60, end: 7 * 60)

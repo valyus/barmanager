@@ -177,6 +177,10 @@ private struct GeneralTab: View {
                               granted: AXIsProcessTrusted(), anchor: "Privacy_Accessibility")
                 PermissionRow(title: "Screen Recording", detail: "Showing icons that change, pictures of icons",
                               granted: ChangeWatcher.hasPermission, anchor: "Privacy_ScreenCapture")
+                if Settings.triggers.contains(where: { $0.condition.needsWiFi }) {
+                    PermissionRow(title: "Location Services", detail: "Wi‑Fi network triggers (macOS treats the Wi‑Fi name as location)",
+                                  granted: WiFi.shared.hasPermission, anchor: "Privacy_LocationServices")
+                }
             }
         }
         .formStyle(.grouped)
@@ -349,7 +353,7 @@ extension PicturedEntry: Identifiable {
 // MARK: - Triggers
 
 private enum ConditionKind: String, CaseIterable, Identifiable {
-    case battery, onBattery, display, appRunning, appFrontmost, time, network
+    case battery, onBattery, display, appRunning, appFrontmost, time, wifi, network
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -359,6 +363,7 @@ private enum ConditionKind: String, CaseIterable, Identifiable {
         case .appRunning: "An app is open"
         case .appFrontmost: "An app is in front"
         case .time: "During certain hours"
+        case .wifi: "Connected to a Wi‑Fi network"
         case .network: "The network changes"
         }
     }
@@ -372,6 +377,7 @@ private struct TriggersTab: View {
     @State private var start = Calendar.current.date(from: DateComponents(hour: 9)) ?? Date()
     @State private var end = Calendar.current.date(from: DateComponents(hour: 17)) ?? Date()
     @State private var profileID = ""
+    @State private var network = ""
 
     private var apps: [(id: String, name: String)] {
         let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
@@ -432,6 +438,20 @@ private struct TriggersTab: View {
                 case .time:
                     DatePicker("From", selection: $start, displayedComponents: .hourAndMinute)
                     DatePicker("Until", selection: $end, displayedComponents: .hourAndMinute)
+                case .wifi:
+                    HStack {
+                        TextField("Network", text: $network, prompt: Text("Wi‑Fi name"))
+                        Button("Use Current") {
+                            WiFi.shared.requestPermission {
+                                if let current = WiFi.shared.currentNetwork { network = current }
+                                model.changed()
+                            }
+                        }
+                    }
+                    if WiFi.shared.isRefused {
+                        Text("macOS shows Wi‑Fi names only to apps allowed to use Location Services. Allow BarManager in System Settings → Privacy & Security → Location Services, or this trigger never starts.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 default:
                     EmptyView()
                 }
@@ -442,11 +462,15 @@ private struct TriggersTab: View {
                 HStack {
                     Spacer()
                     Button("Add Trigger") { add() }
-                        .disabled((kind == .appRunning || kind == .appFrontmost) && appID.isEmpty)
+                        .disabled((kind == .appRunning || kind == .appFrontmost) && appID.isEmpty
+                                  || kind == .wifi && network.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            if network.isEmpty, WiFi.shared.hasPermission { network = WiFi.shared.currentNetwork ?? "" }
+        }
     }
 
     private func add() {
@@ -460,6 +484,9 @@ private struct TriggersTab: View {
         case .appFrontmost: condition = .appFrontmost(bundleID: appID, name: name)
         case .time: condition = .timeRange(start: Self.minutes(start), end: Self.minutes(end))
         case .network: condition = .networkChanged
+        case .wifi:
+            condition = .wifiNetwork(name: network.trimmingCharacters(in: .whitespaces))
+            WiFi.shared.requestPermission { model.changed() }
         }
         let action: TriggerAction = UUID(uuidString: profileID).map { .applyProfile($0) } ?? .showHiddenIcons
         Settings.triggers.append(TriggerRule(condition: condition, action: action))
