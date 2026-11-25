@@ -76,7 +76,7 @@ final class ChangeWatcher {
         }
     }
 
-    private static func capture(_ ids: [CGWindowID]) async -> [(CGWindowID, CGImage)] {
+    static func capture(_ ids: [CGWindowID]) async -> [(CGWindowID, CGImage)] {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false) else { return [] }
         let windows = Dictionary(content.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { a, _ in a })
         var result: [(CGWindowID, CGImage)] = []

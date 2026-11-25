@@ -7,6 +7,14 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 ## [Unreleased]
 
 ### Added
+- **Search Icons**: a Spotlight-style box that finds any menu bar icon by name and opens it, even a hidden one. Open it from the right-click menu or with a shortcut.
+- **Keyboard shortcuts** that work in any app: show or hide hidden icons, show all including Always Hidden, search, open one particular icon, and switch profiles.
+- **A bar below the menu bar** for hidden icons: choose to always show hidden icons there, or only when they wouldn't fit next to the notch or the app's menus. Click an icon in the bar to open it.
+- **Settings window** (right-click → Settings…) with General, Shortcuts, Icons, Triggers, Profiles, Appearance and Backup tabs. The Icons tab lists every menu bar icon with its section, a shortcut and a "never pop up" switch.
+- **Profiles**: save your settings as Work, Home, Presenting and so on, then switch from the right-click menu, a shortcut or a trigger. Includes a ready-made Presenting profile that hides everything and keeps quiet.
+- **Triggers**: show hidden icons or switch profiles on their own while on battery, below a battery level, with an external display, while an app is open or in front, during certain hours, or when the network changes.
+- **Menu bar tint and border**, **spacers** to group icons, and a **Space between icons** setting.
+- **Export and import** of all settings, plus Reset.
 - A list of the hidden icons at the top of the right-click menu, with each icon's picture and app name. Choose one to show it. Icons that changed in the last hour come first, marked **New** with when they changed.
 - **Show Icons When They Change** (off by default): a hidden icon whose picture changes is shown for 5 s. Includes a **Never Show These** list for icons that change all the time.
 - **Sound** when icons show and hide, with 7 sound sets plus None, and a **Volume** slider.
@@ -16,6 +24,8 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 - [docs/FEATURES.md](docs/FEATURES.md), describing every feature.
 
 ### Changed
+- If a menu bar ever lays items out so that hiding would push the arrow off screen, BarManager now shows the icons instead of losing the arrow.
+- Where the window server stops listing menu bar items one by one (macOS 27), BarManager finds them through Accessibility instead.
 - The thin divider `|` is gone. The arrow itself is now the boundary: icons left of the arrow are hidden, icons right of it stay visible. Icons you kept visible between the old divider and the arrow are now hidden; ⌘-drag them to the right of the arrow to keep them visible.
 - Clicking the arrow shows hidden icons. Hovering is now off by default; turn it back on under right-click → Show Hidden Icons on Hover.
 - The arrow takes up less room in the menu bar.
