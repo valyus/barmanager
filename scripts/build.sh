@@ -60,6 +60,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSLocationUsageDescription</key><string>BarManager reads the name of your Wi‑Fi network for Wi‑Fi triggers. macOS counts that as location. Your location itself isn't used or stored.</string>
+    <key>NSLocationWhenInUseUsageDescription</key><string>BarManager reads the name of your Wi‑Fi network for Wi‑Fi triggers. macOS counts that as location. Your location itself isn't used or stored.</string>
     <key>NSHumanReadableCopyright</key><string>© $(date +%Y) Alex Valius</string>
     ${UPDATE_KEYS}
 </dict>
@@ -89,7 +91,7 @@ if $HAS_SPARKLE; then
     sign "$SPARKLE/Updater.app"
     sign "$APP/Contents/Frameworks/Sparkle.framework"
 fi
-sign "$APP"
+sign --entitlements BarManager.entitlements "$APP"
 codesign --verify --strict --deep "$APP"
 if [ -n "$PUBLIC_KEY" ]; then updates="updates on"; else updates="updates off: no sparkle-public-key.txt"; fi
 echo "Built $APP ($VERSION, build $BUILD, $updates)"

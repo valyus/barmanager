@@ -20,9 +20,17 @@ enum TriggerCondition: Codable, Equatable {
     case timeRange(start: Int, end: Int)
     /// A moment, not a state: the network connection changed (Wi-Fi, VPN, cable).
     case networkChanged
+    /// Connected to the Wi‑Fi network with this name.
+    case wifiNetwork(name: String)
 
     /// Events last only a moment; states last as long as they're true.
     var isEvent: Bool { self == .networkChanged }
+
+    /// Reading the Wi‑Fi name needs Location Services, so it's only read when a rule uses it.
+    var needsWiFi: Bool {
+        if case .wifiNetwork = self { return true }
+        return false
+    }
 
     func isMet(in state: SystemState) -> Bool {
         switch self {
@@ -42,6 +50,8 @@ enum TriggerCondition: Codable, Equatable {
             return start <= end ? (now >= start && now < end) : (now >= start || now < end)
         case .networkChanged:
             return false
+        case .wifiNetwork(let name):
+            return state.wifiNetwork == name
         }
     }
 
@@ -54,6 +64,7 @@ enum TriggerCondition: Codable, Equatable {
         case .appFrontmost(_, let name): "\(name) is in front"
         case .timeRange(let start, let end): "Between \(Self.clock(start)) and \(Self.clock(end))"
         case .networkChanged: "The network changes"
+        case .wifiNetwork(let name): "Connected to the Wi‑Fi network “\(name)”"
         }
     }
 
@@ -84,8 +95,9 @@ struct SystemState: Equatable {
     var runningBundleIDs: Set<String> = []
     var frontmostBundleID: String?
     var minutesSinceMidnight = 0
+    var wifiNetwork: String?
 
-    static func now() -> SystemState {
+    static func now(includeWiFi: Bool = false) -> SystemState {
         var state = SystemState()
         if let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
            let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] {
@@ -104,6 +116,7 @@ struct SystemState: Equatable {
         state.frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let parts = Calendar.current.dateComponents([.hour, .minute], from: Date())
         state.minutesSinceMidnight = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+        if includeWiFi { state.wifiNetwork = WiFi.shared.currentNetwork }
         return state
     }
 }
@@ -140,6 +153,7 @@ final class TriggerEngine {
         }
         monitor.start(queue: .global(qos: .utility))
         pathMonitor = monitor
+        WiFi.shared.onPermissionChange = { [weak self] in self?.evaluate() }
         evaluate()
     }
 
@@ -166,6 +180,7 @@ final class TriggerEngine {
     private func pathChanged(_ summary: String) {
         defer { lastPath = summary }
         guard let lastPath, lastPath != summary else { return } // the first report is just the current state
+        evaluate() // the Wi‑Fi network may have changed
         for rule in Settings.triggers where rule.enabled && rule.condition == .networkChanged {
             onStart?(rule)
         }
@@ -173,7 +188,7 @@ final class TriggerEngine {
 
     func evaluate() {
         let rules = Settings.triggers.filter { $0.enabled && !$0.condition.isEvent }
-        let state = SystemState.now()
+        let state = SystemState.now(includeWiFi: rules.contains { $0.condition.needsWiFi })
         let ids = Set(rules.map(\.id))
         // Rules that were removed or turned off end now.
         let all = Settings.triggers

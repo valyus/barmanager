@@ -88,6 +88,8 @@ In Settings → **Triggers**, add each, then check:
 - [ ] **An app is in front** (pick Safari) → Show hidden icons: switching to Safari shows them and they stay; leaving Safari lets them hide after the auto-hide delay.
 - [ ] **An app is open** → Switch to Presenting: opening the app switches profile.
 - [ ] **The network changes** → Show hidden icons: turn Wi‑Fi off and on; icons show, then hide after the delay. Nothing happens when BarManager starts.
+- [ ] **⚠︎** **Connected to a Wi‑Fi network**: click **Use Current**. macOS asks for Location Services once (the prompt explains it's for the Wi‑Fi name); after allowing, the field fills with your network. Add it with Show hidden icons: icons show within 10 s. Join another network or turn Wi‑Fi off: they hide after the delay. Settings → General → Permissions now lists Location Services as Allowed. (Untested whether a hardened, signed build gets the prompt at all.)
+- [ ] Deny Location Services (System Settings → Privacy & Security → Location Services): the New trigger section says the trigger can't start, and the trigger does nothing.
 - [ ] **During certain hours**, set to a window that includes now: icons show within 10 s.
 - [ ] **Running on battery** (laptop): unplug; icons show within 10 s. Plug in; they hide after the delay.
 - [ ] **An external display is connected**: plug one in; icons show.
