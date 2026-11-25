@@ -77,7 +77,8 @@ enum MenuBarCatalog {
         let hostsMany = isSystemHost || children.count > 1
 
         return children.compactMap { child in
-            guard let frame = AX.frame(of: child) else { return nil }
+            // Control Center lists modules that aren't in the menu bar as zero-size items.
+            guard let frame = AX.frame(of: child), frame.width >= 1 else { return nil }
             let label = [kAXDescriptionAttribute, kAXTitleAttribute, kAXHelpAttribute]
                 .lazy.compactMap { (AX.attribute(child, $0) as String?) }.first { !$0.isEmpty }
             let identifier: String? = AX.attribute(child, kAXIdentifierAttribute)
@@ -126,12 +127,15 @@ enum MenuBarCatalog {
     static func commandDrag(from start: CGPoint, to end: CGPoint, completion: @escaping () -> Void) {
         let saved = CGEvent(source: nil)?.location
         DispatchQueue.global(qos: .userInitiated).async {
-            let source = CGEventSource(stateID: .hidSystemState)
+            // The ⌘ flag on these events stays set system-wide afterwards (whatever
+            // the source), turning every click into a ⌘-click, hence releaseCommand().
+            let source = CGEventSource(stateID: .privateState)
             func post(_ type: CGEventType, _ point: CGPoint) {
                 guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: .left) else { return }
                 event.flags = .maskCommand
                 event.post(tap: .cghidEventTap)
             }
+            defer { releaseCommand() }
             post(.mouseMoved, start)
             usleep(40_000)
             post(.leftMouseDown, start)
@@ -150,6 +154,16 @@ enum MenuBarCatalog {
                 completion()
             }
         }
+    }
+
+    /// Makes sure ⌘ doesn't stay down after a simulated drag.
+    static func releaseCommand() {
+        // keyState can't tell a real held ⌘ from the flag our events left behind,
+        // and nobody is holding ⌘ while BarManager drags, so always let it go.
+        guard CGEventSource.flagsState(.hidSystemState).contains(.maskCommand) else { return }
+        let up = CGEvent(keyboardEventSource: CGEventSource(stateID: .hidSystemState), virtualKey: 0x37, keyDown: false)
+        up?.flags = []
+        up?.post(tap: .cghidEventTap)
     }
 
     /// True when a person could click `point` (global, top-left origin): on a

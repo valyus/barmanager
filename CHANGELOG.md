@@ -14,6 +14,9 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 ### Changed
 - Releases are now checked end to end: the Release workflow stops early if a signing or notarization secret is missing, signs only with Developer ID, signs the `.dmg` too, and checks that Gatekeeper accepts the build before publishing. It can also be run by hand to replace an existing release's files with notarized ones. `scripts/set-release-secrets.sh` checks and uploads the secrets.
 
+### Fixed
+- Search and Settings → Icons no longer list empty “Control Center” entries for Control Center modules that aren't in the menu bar.
+
 ## [1.1.0] - 2026-11-26
 
 ### Added

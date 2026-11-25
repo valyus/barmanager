@@ -68,7 +68,9 @@ Settings → General → **Show hidden icons**:
 - [ ] Right-click → **Settings…** opens it in front; ⌘, in the right-click menu does too. Opening it again brings the same window forward.
 - [ ] **General**: every control changes the matching right-click menu item, and the other way round (change the sound in the menu while the window is open; the window updates).
 - [ ] **Icons**: lists every icon, nearest the arrow first, grouped Visible, Hidden, Always Hidden. **Reload** updates it after you ⌘-drag something.
-- [ ] **⚠︎** **Icons → Section menu**: move a Visible icon to Hidden, then back to Visible, then (with Always Hidden on) to Always Hidden and back to Hidden. Each time: all sections show, the icon is dragged, the pointer returns to where it was, the list shows the new section, and icons hide again if they were hidden. The moved icon hides when icons hide (it must land left of the invisible hiding item, not between it and the arrow). (Untested whether posted ⌘-drags move items at all; note what happens: ____________)
+- [x] **Icons → Section menu**: move a Visible icon to Hidden, then back to Visible, starting both with icons showing and with them hidden. Each time: all sections show, the icon is dragged, the pointer returns to where it was, the list shows the new section, and icons hide again if they were hidden. The moved icon hides when icons hide. *Passed 2026-11-26 on macOS 26.7.3 (Protokol, both directions, both states). Moving the real mouse during the drag makes it fail with a message.*
+- [ ] Afterwards, a plain click on the arrow still shows and hides icons (⌘ must not stay held down).
+- [ ] With Always Hidden on: move an icon to Always Hidden and back to Hidden. *On a 14" MacBook with many icons the `‖` divider sits behind the notch while everything shows, so this correctly says there's no room; try with fewer icons.*
 - [ ] With so many icons that some sit behind the notch: moving one of those says there's no room instead of dragging.
 - [ ] Moving the Clock or Control Center: a message says it couldn't be moved, and nothing else moved.
 - [ ] **Icons → Never pop up** matches right-click → Show Icons When They Change → Never Show These.
@@ -144,4 +146,8 @@ Needs a release build with `sparkle-public-key.txt` and a published newer versio
 
 Bugs found, with steps:
 
--
+- 2026-11-26, fixed: after moving an icon from the Icons tab, ⌘ stayed held down system-wide, so every click anywhere was a ⌘-click (the arrow stopped responding). The posted ⌘-drag events left the ⌘ flag set.
+- 2026-11-26, fixed: the Icons tab and search listed about 9 nameless "Control Center" rows, Control Center modules that have no place in the menu bar (zero size).
+- 2026-11-26, open: the Settings window's tab bar doesn't show its tabs; Accessibility reports them all in the toolbar's overflow (») menu. Needs a screenshot to confirm.
+- 2026-11-26, open: on a crowded notched menu bar, icons macOS has no room for (here Figma, Zoom, Grammarly, Tailscale, TrendAI) report a position at the far left (x≈0). They're listed as Hidden but can't be seen or dragged, and they don't appear in the right-click list.
+- 2026-11-26, open: in the right-click list, Shottr and Battery show as "Hidden Icon" instead of their names.
