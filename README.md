@@ -53,7 +53,23 @@ swift test
 2. Put the same `x.y.z` in [VERSION](VERSION) and commit.
 3. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
 
-The **Release** workflow then tests, signs with Developer ID, notarizes, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. It needs these repository secrets:
+The **Release** workflow then tests, signs with Developer ID, notarizes, checks that Gatekeeper accepts the result, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. If a secret is missing or the certificate isn't a Developer ID, it stops before building rather than publish an unnotarized build.
+
+To replace the files of a release that's already published (like 1.1.0, which went out before notarization was set up), run **Release** by hand from the Actions tab with that tag. It keeps the release notes and swaps in the notarized files.
+
+### Setting up signing and notarization
+
+You need a paid [Apple Developer Program](https://developer.apple.com/programs/) membership. Do this once:
+
+1. **Developer ID certificate.** In Xcode → Settings → Accounts → your team → Manage Certificates, click **+** → **Developer ID Application**. Only the team's Account Holder can create one. Then in Keychain Access, find "Developer ID Application: …", select it *and* the private key under it, and choose File → Export Items… as a `.p12` with a password.
+2. **API key for notarization.** On [App Store Connect → Users and Access → Integrations → App Store Connect API](https://appstoreconnect.apple.com/access/integrations/api), create a Team key with the **Developer** role and download `AuthKey_XXXXXXXXXX.p8` (you can download it only once). Note the **Issuer ID** at the top of that page.
+3. **Upload them** as repository secrets. This checks that the certificate is a Developer ID with its key and that Apple accepts the API key, then sets all five secrets through `gh`:
+
+   ```bash
+   scripts/set-release-secrets.sh ~/Downloads/DeveloperID.p12 ~/Downloads/AuthKey_XXXXXXXXXX.p8 ISSUER_ID
+   ```
+
+Keep the `.p12` and `.p8` somewhere safe, like a password manager, and delete the loose copies. The secrets are:
 
 | Secret | What it is |
 |---|---|
