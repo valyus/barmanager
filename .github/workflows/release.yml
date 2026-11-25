@@ -48,6 +48,14 @@ jobs:
           ref: ${{ env.TAG }}
           fetch-depth: 0 # the build number is the commit count
 
+      # Build the tag's app with this workflow's own build and packaging scripts.
+      # For a tag push they're the same commit; for a hand run on an older tag,
+      # this brings in fixes (like signing the .dmg) made since that tag.
+      - name: Use current release scripts
+        run: |
+          git checkout "$GITHUB_SHA" -- scripts/build.sh scripts/package.sh
+          git log -1 --format='Scripts from %h (%s)' "$GITHUB_SHA"
+
       - name: Tag matches VERSION
         run: test "${TAG#v}" = "$(tr -d '[:space:]' < VERSION)"
 
