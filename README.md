@@ -9,7 +9,29 @@ Requires macOS 14 or later.
 
 ## Install
 
-Download the latest `.dmg` from the GitHub Releases page, open it, and drag BarManager to Applications. The first time you open it, BarManager shows a short how-to.
+1. Download the latest `.dmg` from the [Releases page](https://github.com/valyus/barmanager/releases).
+2. Open it and drag BarManager to Applications.
+3. Open BarManager from Applications.
+
+Release builds aren't notarized by Apple yet, so the first time you open BarManager, macOS says it can't check it for malicious software and won't open it. To allow it:
+
+1. Click **Done** (or **OK**) on that message.
+2. Open **System Settings → Privacy & Security** and scroll down to Security. Next to the message about BarManager, click **Open Anyway**, then confirm with your password or Touch ID.
+3. Open BarManager again and click **Open Anyway** when asked.
+
+You only need to do this once. Or, in Terminal, clear the download flag before opening it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/BarManager.app
+```
+
+To check the download, compare its SHA-256 with `SHA256SUMS-x.y.z.txt` from the same release:
+
+```bash
+shasum -a 256 ~/Downloads/BarManager-*.dmg
+```
+
+The first time you open it, BarManager shows a short how-to.
 
 ## Build from source
 
