@@ -53,6 +53,9 @@ final class SettingsModel: ObservableObject {
     @Published var icons: [PicturedEntry] = []
     @Published var loadingIcons = false
     @Published var recording: String?
+    /// The icon being moved right now, by key.
+    @Published var movingKey: String?
+    @Published var moveMessage: String?
 
     /// A two-way binding straight onto a Settings property.
     func bind<T>(_ get: @escaping () -> T, _ set: @escaping (T) -> Void) -> Binding<T> {
@@ -78,6 +81,26 @@ final class SettingsModel: ObservableObject {
                 return a != b ? a < b : $0.entry.frame.minX > $1.entry.frame.minX
             }
             self.loadingIcons = false
+        }
+    }
+
+    func move(_ item: PicturedEntry, to section: MenuBarSection) {
+        guard movingKey == nil, item.section != section, let controller = AppBridge.controller else { return }
+        movingKey = item.entry.key
+        moveMessage = nil
+        controller.move(item.entry, to: section) { [weak self] result in
+            guard let self else { return }
+            self.movingKey = nil
+            switch result {
+            case .moved: break
+            case .noRoom:
+                self.moveMessage = "Couldn’t move “\(item.entry.name)”: it or its new spot is behind the notch or off screen. Quit an app with menu bar icons, or ⌘-drag it by hand."
+            case .failed:
+                self.moveMessage = "Couldn’t move “\(item.entry.name)”. Some icons can’t be moved; try ⌘-dragging it in the menu bar."
+            case .needsAccessibility:
+                self.moveMessage = "Moving icons needs Accessibility permission."
+            }
+            self.loadIcons()
         }
     }
 
@@ -296,6 +319,11 @@ struct ShortcutRecorder: View {
 private struct IconsTab: View {
     @ObservedObject var model: SettingsModel
 
+    /// Always Hidden is offered only while that section is turned on.
+    private func sections(including current: MenuBarSection) -> [MenuBarSection] {
+        [.visible, .hidden, .alwaysHidden].filter { $0 != .alwaysHidden || Settings.alwaysHiddenEnabled || current == .alwaysHidden }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !AXIsProcessTrusted() {
@@ -308,7 +336,7 @@ private struct IconsTab: View {
                 Spacer()
             } else {
                 HStack {
-                    Text("Every menu bar icon, nearest the arrow first. ⌘-drag icons in the menu bar to move them between sections.")
+                    Text("Every menu bar icon, nearest the arrow first. Choose a section to move an icon there, or ⌘-drag icons in the menu bar.")
                         .font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     Button { model.loadIcons() } label: { Label("Reload", systemImage: "arrow.clockwise") }
@@ -324,8 +352,19 @@ private struct IconsTab: View {
                         }
                     }
                     .width(min: 160, ideal: 220)
-                    TableColumn("Section") { item in Text(item.section.title).foregroundStyle(.secondary) }
-                        .width(90)
+                    TableColumn("Section") { item in
+                        if model.movingKey == item.entry.key {
+                            HStack(spacing: 4) { ProgressView().controlSize(.small); Text("Moving…").foregroundStyle(.secondary) }
+                        } else {
+                            Picker("", selection: Binding(get: { item.section }, set: { model.move(item, to: $0) })) {
+                                ForEach(sections(including: item.section), id: \.self) { Text($0.title).tag($0) }
+                            }
+                            .labelsHidden()
+                            .disabled(model.movingKey != nil)
+                            .help("Move this icon to another section")
+                        }
+                    }
+                    .width(min: 120, ideal: 130)
                     TableColumn("Never pop up") { item in
                         Toggle("", isOn: model.bind({ Settings.neverShowWhenChanged[item.entry.key] != nil }, { on in
                             Settings.neverShowWhenChanged[item.entry.key] = on ? item.entry.name : nil
@@ -340,9 +379,13 @@ private struct IconsTab: View {
                     .width(min: 150, ideal: 170)
                 })
                 .overlay { if model.icons.isEmpty { Text(model.loadingIcons ? "Finding icons…" : "No icons found").foregroundStyle(.secondary) } }
+                if let message = model.moveMessage {
+                    Text(message).font(.callout).foregroundStyle(.red)
+                }
             }
         }
         .onAppear { if model.icons.isEmpty { model.loadIcons() } }
+        .onDisappear { model.moveMessage = nil }
     }
 }
 

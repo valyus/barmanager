@@ -8,6 +8,7 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 
 ### Added
 - **In-app updates.** BarManager checks for new versions once a day and shows a dot on the arrow and **Install BarManager x.y.z…** at the top of the right-click menu when one is ready. Check by hand with right-click → **Check for Updates…**, or choose automatic checks and installs under Settings → General → Updates. Updates are signed, and BarManager installs only ones signed by its developer. Versions before 1.2.0 can't update themselves, so get this one from GitHub.
+- **Move icons from Settings.** In Settings → Icons, choose Visible, Hidden or Always Hidden next to any icon to move it there. BarManager does the ⌘-drag for you, shows every section while it works, puts the pointer back, then hides icons again as before. If an icon is behind the notch or won't move, it says so.
 - **Wi‑Fi network trigger**: show hidden icons or switch profiles while you're on a particular Wi‑Fi network, like switching to your Work profile at the office. Type the network's name or click **Use Current**. macOS shares Wi‑Fi names only with apps allowed to use Location Services, so BarManager asks for that the first time you add one. It reads only the network name, never your location.
 
 ### Changed

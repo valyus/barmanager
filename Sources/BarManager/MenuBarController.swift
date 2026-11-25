@@ -864,7 +864,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         alert.informativeText = """
         BarManager adds an arrow ( ‹ ) to your menu bar.
 
-        • Hold ⌘ and drag any menu bar icon to the LEFT of the arrow to hide it, or to its RIGHT to keep it visible.
+        • Hold ⌘ and drag any menu bar icon to the LEFT of the arrow to hide it, or to its RIGHT to keep it visible. Or move icons from Settings → Icons.
         • Click the arrow to show those icons. Right-click it to see a list of them, with any that changed recently on top.
         • They also hide on their own after a few seconds (right-click → Auto-hide After).
         • Optionally, a hidden icon that changes (say, gets a badge) shows for 5 seconds. Turn it on, and pick icons that never show, under right-click → Show Icons When They Change.
@@ -1252,5 +1252,80 @@ extension MenuBarController {
         }
         image.isTemplate = true
         return image
+    }
+}
+
+// MARK: - Moving icons between sections
+
+/// Where to drop an icon so it lands in a section. Pure, so it can be tested.
+/// All values are global x positions of the current item frames.
+enum MoveTarget {
+    /// How far past an edge to drop, so the menu bar puts the icon on the far side of it.
+    static let overshoot: CGFloat = 4
+
+    static func dropX(to target: MenuBarSection, from current: MenuBarSection,
+                      arrow: CGRect, hiddenEdge: CGRect?, divider: CGRect?) -> CGFloat? {
+        switch target {
+        case .visible:
+            return arrow.maxX + overshoot
+        case .hidden:
+            if current == .alwaysHidden {
+                guard let divider else { return nil }
+                return divider.maxX + overshoot
+            }
+            // Left of the invisible item that does the hiding, or the icon would stay in view.
+            return (hiddenEdge ?? arrow).minX - overshoot
+        case .alwaysHidden:
+            guard let divider else { return nil }
+            return divider.minX - overshoot
+        }
+    }
+}
+
+enum MoveResult {
+    case moved, noRoom, failed, needsAccessibility
+}
+
+extension MenuBarController {
+    /// Moves an icon to another section with a ⌘-drag, the same as doing it by
+    /// hand: shows every section, drags, checks where it landed, then hides
+    /// again as before.
+    func move(_ entry: MenuBarEntry, to target: MenuBarSection, completion: @escaping (MoveResult) -> Void) {
+        guard AXIsProcessTrusted() else { return completion(.needsAccessibility) }
+        guard target != .alwaysHidden || Settings.alwaysHiddenEnabled else { return completion(.failed) }
+        let wasCollapsed = isCollapsed
+        iconBar.close(notify: false)
+        isPeeking = false
+        expand(showAll: true, persist: false)
+        autoHideTimer?.invalidate() // don't hide halfway through the drag
+
+        func finish(_ result: MoveResult) {
+            if wasCollapsed { collapse(sound: false) } else { expand(showAll: false, persist: false) }
+            completion(result)
+        }
+
+        // Give the menu bar a moment to lay every icon out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [self] in
+            guard let frame = MenuBarCatalog.currentFrame(of: entry),
+                  let arrow = toggleItem.button?.window?.frame else { return finish(.failed) }
+            let current = section(of: frame)
+            guard current != target else { return finish(.moved) }
+            let divider = Settings.alwaysHiddenEnabled ? alwaysHiddenItem.button?.window?.frame : nil
+            let hiddenEdge = (hiderItem ?? parkedHider)?.button?.window?.frame
+            guard let x = MoveTarget.dropX(to: target, from: current, arrow: arrow, hiddenEdge: hiddenEdge, divider: divider)
+            else { return finish(.failed) }
+            let start = CGPoint(x: frame.midX, y: frame.midY)
+            let end = CGPoint(x: x, y: frame.midY)
+            guard MenuBarCatalog.isReachable(start), MenuBarCatalog.isReachable(end) else { return finish(.noRoom) }
+
+            MenuBarCatalog.commandDrag(from: start, to: end) { [self] in
+                // Check where it actually landed before hiding again.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [self] in
+                    let landed = MenuBarCatalog.currentFrame(of: entry).map { section(of: $0) }
+                    if landed != target { NSLog("BarManager: moving \(entry.key) to \(target) ended in \(String(describing: landed))") }
+                    finish(landed == target ? .moved : .failed)
+                }
+            }
+        }
     }
 }

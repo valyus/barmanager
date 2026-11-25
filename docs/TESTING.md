@@ -68,6 +68,9 @@ Settings → General → **Show hidden icons**:
 - [ ] Right-click → **Settings…** opens it in front; ⌘, in the right-click menu does too. Opening it again brings the same window forward.
 - [ ] **General**: every control changes the matching right-click menu item, and the other way round (change the sound in the menu while the window is open; the window updates).
 - [ ] **Icons**: lists every icon, nearest the arrow first, grouped Visible, Hidden, Always Hidden. **Reload** updates it after you ⌘-drag something.
+- [ ] **⚠︎** **Icons → Section menu**: move a Visible icon to Hidden, then back to Visible, then (with Always Hidden on) to Always Hidden and back to Hidden. Each time: all sections show, the icon is dragged, the pointer returns to where it was, the list shows the new section, and icons hide again if they were hidden. The moved icon hides when icons hide (it must land left of the invisible hiding item, not between it and the arrow). (Untested whether posted ⌘-drags move items at all; note what happens: ____________)
+- [ ] With so many icons that some sit behind the notch: moving one of those says there's no room instead of dragging.
+- [ ] Moving the Clock or Control Center: a message says it couldn't be moved, and nothing else moved.
 - [ ] **Icons → Never pop up** matches right-click → Show Icons When They Change → Never Show These.
 - [ ] **Icons → Shortcut**: give one icon a shortcut; it opens that icon's menu from any app, even while hidden.
 
