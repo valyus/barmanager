@@ -8,7 +8,7 @@ BarManager adds an **arrow** to the right side of your menu bar. Icons to the le
 
 ## Hiding icons
 
-- **⌘-drag** any menu bar icon to the left of the arrow to hide it, or to its right to keep it visible. This is the standard macOS way to rearrange menu bar icons; BarManager remembers where everything goes.
+- **⌘-drag** any menu bar icon to the left of the arrow to hide it, or to its right to keep it visible. This is the standard macOS way to rearrange menu bar icons; BarManager remembers where everything goes. Or choose a section next to the icon in Settings → [Icons](#settings).
 
 ## Showing hidden icons
 
@@ -155,7 +155,7 @@ Right-click the arrow → **Settings…** opens a window with everything in one 
 
 - **General:** where hidden icons show, auto-hide, hover, showing icons that change, Always Hidden, sound and volume, [updates](#updates), Launch at Login, and which permissions are allowed.
 - **Shortcuts**, **Profiles**, **Triggers** and **Appearance**, as described above.
-- **Icons:** every menu bar icon, nearest the arrow first, with its section (Visible, Hidden, Always Hidden), a **Never pop up** switch (the same list as Show Icons When They Change → Never Show These) and a shortcut that opens it. To move an icon to another section, ⌘-drag it in the menu bar. Needs **Accessibility**.
+- **Icons:** every menu bar icon, nearest the arrow first, with its section (Visible, Hidden, Always Hidden), a **Never pop up** switch (the same list as Show Icons When They Change → Never Show These) and a shortcut that opens it. To move an icon, choose another section in its **Section** menu (Always Hidden is offered while that section is on). BarManager shows every section, ⌘-drags the icon for you with the pointer, puts the pointer back where it was, checks where the icon landed and hides icons again as they were. An icon moved to Visible lands just right of the arrow, to Hidden just left of it, to Always Hidden just left of `‖`. If the icon or its new spot is behind the notch or off screen, or the icon didn't move (some system icons can't be moved), a message says so. Don't move the mouse while it works. Needs **Accessibility**.
 - **Backup:** **Export Settings…** saves every setting, profile, trigger and shortcut, plus where BarManager's own items sit, to a `.plist` file. **Import Settings…** replaces the current settings with a file's; positions of BarManager's own items apply the next time it starts. **Reset All Settings…** goes back to defaults, deleting profiles, triggers and shortcuts.
 
 ## Updates

@@ -156,3 +156,25 @@ final class UpdaterTests: XCTestCase {
         XCTAssertFalse(Updater.shared.isConfigured)
     }
 }
+
+final class MoveTargetTests: XCTestCase {
+    // [always hidden] ‖ [hidden] · ‹ [visible]
+    let divider = CGRect(x: 100, y: 0, width: 8, height: 24)
+    let hider = CGRect(x: 300, y: 0, width: 4, height: 24)
+    let arrow = CGRect(x: 310, y: 0, width: 22, height: 24)
+
+    func testDropsPastTheRightEdge() {
+        XCTAssertEqual(MoveTarget.dropX(to: .visible, from: .hidden, arrow: arrow, hiddenEdge: hider, divider: divider), 336)
+        XCTAssertEqual(MoveTarget.dropX(to: .alwaysHidden, from: .visible, arrow: arrow, hiddenEdge: hider, divider: divider), 96)
+    }
+
+    func testHiddenLandsLeftOfTheHiderFromTheRightAndRightOfTheDividerFromTheLeft() {
+        XCTAssertEqual(MoveTarget.dropX(to: .hidden, from: .visible, arrow: arrow, hiddenEdge: hider, divider: divider), 296)
+        XCTAssertEqual(MoveTarget.dropX(to: .hidden, from: .alwaysHidden, arrow: arrow, hiddenEdge: hider, divider: divider), 112)
+        XCTAssertEqual(MoveTarget.dropX(to: .hidden, from: .visible, arrow: arrow, hiddenEdge: nil, divider: nil), 306)
+    }
+
+    func testAlwaysHiddenNeedsTheDivider() {
+        XCTAssertNil(MoveTarget.dropX(to: .alwaysHidden, from: .hidden, arrow: arrow, hiddenEdge: hider, divider: nil))
+    }
+}

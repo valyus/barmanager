@@ -120,6 +120,52 @@ enum MenuBarCatalog {
         return true
     }
 
+    /// ⌘-drags whatever is at `start` to `end` with posted mouse events, the way
+    /// a person moves menu bar items, then puts the pointer back. Calls back on
+    /// the main thread when the drop has been posted.
+    static func commandDrag(from start: CGPoint, to end: CGPoint, completion: @escaping () -> Void) {
+        let saved = CGEvent(source: nil)?.location
+        DispatchQueue.global(qos: .userInitiated).async {
+            let source = CGEventSource(stateID: .hidSystemState)
+            func post(_ type: CGEventType, _ point: CGPoint) {
+                guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: .left) else { return }
+                event.flags = .maskCommand
+                event.post(tap: .cghidEventTap)
+            }
+            post(.mouseMoved, start)
+            usleep(40_000)
+            post(.leftMouseDown, start)
+            usleep(200_000) // the menu bar waits for a held press before it starts a drag
+            let steps = max(10, Int(abs(end.x - start.x) / 6))
+            for step in 1...steps {
+                let t = CGFloat(step) / CGFloat(steps)
+                post(.leftMouseDragged, CGPoint(x: start.x + (end.x - start.x) * t, y: start.y))
+                usleep(8_000)
+            }
+            usleep(200_000) // let the other items slide out of the way before dropping
+            post(.leftMouseUp, end)
+            usleep(80_000)
+            DispatchQueue.main.async {
+                if let saved { CGWarpMouseCursorPosition(saved) }
+                completion()
+            }
+        }
+    }
+
+    /// True when a person could click `point` (global, top-left origin): on a
+    /// screen and not behind a notch.
+    static func isReachable(_ point: CGPoint) -> Bool {
+        guard let screen = NSScreen.screens.first(where: { screenContainsCG(point, $0) }) else { return false }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let appKitPoint = NSPoint(x: point.x, y: primaryHeight - point.y)
+        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            // The notch is the gap between the two areas beside it.
+            let notch = NSRect(x: left.maxX, y: left.minY, width: right.minX - left.maxX, height: left.height)
+            if notch.contains(appKitPoint) { return false }
+        }
+        return true
+    }
+
     private static func screenContainsCG(_ point: CGPoint, _ screen: NSScreen) -> Bool {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let flipped = NSRect(x: screen.frame.minX, y: primaryHeight - screen.frame.maxY,
