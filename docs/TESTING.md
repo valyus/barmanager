@@ -117,6 +117,16 @@ In Settings → **Triggers**, add each, then check:
 - [ ] Still works with Screen Recording: a hidden icon that changes shows for 5 s.
 - [ ] It doesn't pop up while the search box or the strip is open in a way that fights with them.
 
+## Updates
+
+Needs a release build with `sparkle-public-key.txt` and a published newer version, or a local test feed (see README → Setting up in-app updates).
+
+- [ ] Settings → General → Updates shows the two switches and "Last checked…". A build without the key says it can't update itself and has no **Check for Updates…** menu item.
+- [ ] Right-click → **Check for Updates…** with no newer version: Sparkle says you're up to date.
+- [ ] With a newer version: the arrow gets a dot, the right-click menu starts with **Install BarManager x.y.z…**, and choosing it shows the release notes and installs; BarManager restarts on the new version with your settings and permissions intact.
+- [ ] **Skip This Version** clears the dot and the menu item.
+- [ ] With automatic install on: the update downloads by itself and installs when BarManager quits.
+
 ## Edge cases
 
 - [ ] Notched MacBook with many icons: the arrow is never pushed behind the notch or off screen, whatever you hide.

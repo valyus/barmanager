@@ -150,10 +150,20 @@ Under Settings → **Appearance**:
 
 Right-click the arrow → **Settings…** opens a window with everything in one place:
 
-- **General:** where hidden icons show, auto-hide, hover, showing icons that change, Always Hidden, sound and volume, Launch at Login, and which permissions are allowed.
+- **General:** where hidden icons show, auto-hide, hover, showing icons that change, Always Hidden, sound and volume, [updates](#updates), Launch at Login, and which permissions are allowed.
 - **Shortcuts**, **Profiles**, **Triggers** and **Appearance**, as described above.
 - **Icons:** every menu bar icon, nearest the arrow first, with its section (Visible, Hidden, Always Hidden), a **Never pop up** switch (the same list as Show Icons When They Change → Never Show These) and a shortcut that opens it. To move an icon to another section, ⌘-drag it in the menu bar. Needs **Accessibility**.
 - **Backup:** **Export Settings…** saves every setting, profile, trigger and shortcut, plus where BarManager's own items sit, to a `.plist` file. **Import Settings…** replaces the current settings with a file's; positions of BarManager's own items apply the next time it starts. **Reset All Settings…** goes back to defaults, deleting profiles, triggers and shortcuts.
+
+## Updates
+
+BarManager updates itself from its GitHub releases.
+
+- It checks once a day. When a new version is ready, a small dot appears on the arrow and **Install BarManager x.y.z…** shows at the top of the right-click menu. Choose it to see what's new and install. Right after BarManager starts, the update window opens on its own instead.
+- **Check by hand:** right-click → **Check for Updates…**.
+- Under Settings → General → **Updates**: turn daily checks off, or let updates download and install on their own (they install when BarManager quits or restarts). It also says when it last checked.
+- Updates are signed. BarManager installs only updates signed with its developer's key, and macOS also checks they come from the same developer.
+- Copies built without update signing set up (for example with `swift run`, or from source without `sparkle-public-key.txt`) don't check, and Settings says they can't update themselves. Versions before 1.2.0 have no updates; download a newer one from GitHub.
 
 ## Other settings
 
@@ -162,6 +172,7 @@ Right-click the arrow for:
 - **Search Icons…** and **Profile**, near the top.
 - **Launch at Login.** Works best when BarManager is in your Applications folder.
 - **Settings…**: the [settings window](#settings-window).
+- **Check for Updates…**, when an update isn't already waiting.
 - **How to Use…**: the short guide that also appears the first time you open BarManager.
 - **Quit BarManager.** Quitting shows every hidden icon again.
 

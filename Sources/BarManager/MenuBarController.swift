@@ -120,6 +120,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             self?.applySettings()
         }
         AppBridge.controller = self
+        Updater.shared.onAvailabilityChange = { [weak self] in
+            self?.updateToggleIcon()
+            SettingsWindowController.shared.refresh()
+        }
         HotKeyCenter.shared.reload()
         triggerEngine.rulesChanged()
         tint.apply()
@@ -331,7 +335,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let symbol = NSImage(systemSymbolName: name, accessibilityDescription: looksOpen ? "Hide icons" : "Show hidden icons")?
             .withSymbolConfiguration(config)
         guard let button = toggleItem.button else { return }
-        let image = symbol.map { Self.toggleImage(symbol: $0, named: name) }
+        let image = symbol.map { Self.toggleImage(symbol: $0, named: name, badge: Updater.shared.availableVersion != nil) }
         image?.isTemplate = true
         image?.accessibilityDescription = symbol?.accessibilityDescription
         button.image = image
@@ -455,6 +459,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private func showMenu() {
         let menu = NSMenu()
         menu.delegate = self
+        if let version = Updater.shared.availableVersion {
+            let update = NSMenuItem(title: "Install BarManager \(version)…", action: #selector(checkForUpdates), keyEquivalent: "")
+            update.target = self
+            update.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+            update.badge = NSMenuItemBadge(string: "New")
+            menu.addItem(update)
+            menu.addItem(.separator())
+        }
         addHiddenIconsSection(to: menu)
 
         let search = NSMenuItem(title: "Search Icons…", action: #selector(searchFromMenu), keyEquivalent: "")
@@ -528,6 +540,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
+        if Updater.shared.isConfigured, Updater.shared.availableVersion == nil {
+            let updates = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+            updates.target = self
+            menu.addItem(updates)
+        }
         let help = NSMenuItem(title: "How to Use…", action: #selector(showHelp), keyEquivalent: "")
         help.target = self
         menu.addItem(help)
@@ -824,6 +841,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func showHelp() { Self.showHowTo() }
 
+    @objc private func checkForUpdates() { Updater.shared.checkForUpdates() }
+
     @objc private func quit() { NSApp.terminate(nil) }
 
     /// Called as the app quits: restore normal widths so nothing stays pushed off screen.
@@ -861,7 +880,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     /// The arrow symbol on a fixed-size canvas, so the arrow never shifts
     /// when the style or state changes.
-    private static func toggleImage(symbol: NSImage, named name: String) -> NSImage {
+    private static func toggleImage(symbol: NSImage, named name: String, badge: Bool = false) -> NSImage {
         let canvas = NSSize(width: toggleLength - 2, height: 18)
         // The symbol always sits in the same box in the middle, scaled down if needed.
         let box = NSRect(x: (canvas.width - 13) / 2, y: 2, width: 13, height: 14)
@@ -874,6 +893,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
                                 width: symbolSize.width, height: symbolSize.height)
         return NSImage(size: canvas, flipped: false) { _ in
             symbol.draw(in: symbolRect)
+            if badge {
+                // A small dot in the corner: an update is waiting.
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: canvas.width - 5, y: canvas.height - 6, width: 4, height: 4)).fill()
+            }
             return true
         }
     }

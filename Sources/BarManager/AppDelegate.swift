@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = MenuBarController()
+        Updater.shared.start()
 
         if !Settings.hasShownWelcome {
             Settings.hasShownWelcome = true

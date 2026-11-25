@@ -53,7 +53,7 @@ jobs:
       # this brings in fixes (like signing the .dmg) made since that tag.
       - name: Use current release scripts
         run: |
-          git checkout "$GITHUB_SHA" -- scripts/build.sh scripts/package.sh
+          git checkout "$GITHUB_SHA" -- scripts/build.sh scripts/package.sh scripts/make-appcast.sh scripts/verify-update-signature.swift
           git log -1 --format='Scripts from %h (%s)' "$GITHUB_SHA"
 
       - name: Tag matches VERSION
@@ -113,6 +113,27 @@ jobs:
           xcrun stapler validate "dist/BarManager-$v.dmg"
           spctl --assess --type execute --verbose=2 build/BarManager.app
           spctl --assess --type open --context context:primary-signature --verbose=2 "dist/BarManager-$v.dmg"
+
+      # In-app updates: sign the .zip for Sparkle and publish appcast.xml with the
+      # release. Apps read it from .../releases/latest/download/appcast.xml.
+      - name: Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          plist=build/BarManager.app/Contents/Info.plist
+          if [ ! -d build/BarManager.app/Contents/Frameworks/Sparkle.framework ]; then
+            echo "::notice::This version has no in-app updates; skipping the appcast."
+            exit 0
+          fi
+          if ! /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$plist" >/dev/null 2>&1; then
+            echo "::error::sparkle-public-key.txt is missing, so this build couldn't update itself. Run scripts/set-sparkle-key.sh and commit the file."
+            exit 1
+          fi
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "::error::The SPARKLE_PRIVATE_KEY secret is missing. Run scripts/set-sparkle-key.sh."
+            exit 1
+          fi
+          scripts/make-appcast.sh
 
       - name: Release notes from CHANGELOG
         run: |

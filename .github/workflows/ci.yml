@@ -35,6 +35,9 @@ jobs:
           plutil -lint build/BarManager.app/Contents/Info.plist
           codesign --verify --strict --verbose=2 build/BarManager.app
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' build/BarManager.app/Contents/Info.plist)" = "$(tr -d '[:space:]' < VERSION)"
+          # Sparkle is embedded where the app looks for it.
+          test -d build/BarManager.app/Contents/Frameworks/Sparkle.framework
+          otool -l build/BarManager.app/Contents/MacOS/BarManager | grep -q "@executable_path/../Frameworks"
 
       - name: Changelog has an entry for this version or Unreleased
         run: |

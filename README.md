@@ -31,7 +31,7 @@ To check the download, compare its SHA-256 with `SHA256SUMS-x.y.z.txt` from the 
 shasum -a 256 ~/Downloads/BarManager-*.dmg
 ```
 
-The first time you open it, BarManager shows a short how-to.
+The first time you open it, BarManager shows a short how-to. From 1.2.0 on, it updates itself; you only go through these steps once.
 
 ## Build from source
 
@@ -58,6 +58,18 @@ The **Release** workflow then tests, signs with Developer ID, notarizes, checks 
 
 To replace the files of a release that's already published (like 1.1.0, which went out before notarization was set up), run **Release** by hand from the Actions tab with that tag. It keeps the release notes and swaps in the notarized files.
 
+### Setting up in-app updates
+
+BarManager updates itself with [Sparkle](https://sparkle-project.org). Each release publishes `appcast.xml` next to the `.dmg` and `.zip`, and apps read it from `releases/latest/download/appcast.xml`. Updates are signed with an EdDSA key; the app has the public half and installs only updates signed with the private half. Do this once:
+
+```bash
+scripts/set-sparkle-key.sh
+```
+
+It creates the key in your login keychain (or reuses an existing one), writes the public key to `sparkle-public-key.txt` and uploads the private key as the `SPARKLE_PRIVATE_KEY` secret. Commit `sparkle-public-key.txt`. **Back up the private key** as the script shows: if it's lost, installed copies can't be updated again.
+
+Without `sparkle-public-key.txt`, builds don't check for updates, and the Release workflow refuses to publish a version that includes Sparkle. To test an update locally, build with `SPARKLE_FEED_URL` pointing at your own appcast; `scripts/make-appcast.sh` signs the `.zip` and writes `dist/appcast.xml` after `scripts/package.sh`, and checks the signature against the key in the app.
+
 ### Setting up signing and notarization
 
 You need a paid [Apple Developer Program](https://developer.apple.com/programs/) membership. Do this once:
@@ -79,6 +91,7 @@ Keep the `.p12` and `.p8` somewhere safe, like a password manager, and delete th
 | `NOTARY_KEY_P8` | An App Store Connect API key (`AuthKey_XXXX.p8`), base64-encoded |
 | `NOTARY_KEY_ID` | That key's ID |
 | `NOTARY_ISSUER` | Your App Store Connect issuer ID |
+| `SPARKLE_PRIVATE_KEY` | The update signing key, set by `scripts/set-sparkle-key.sh` |
 
 To package locally, run `scripts/package.sh` after building. It notarizes too when `NOTARY_KEY_PATH`, `NOTARY_KEY_ID` and `NOTARY_ISSUER` are set.
 

@@ -131,3 +131,11 @@ final class SettingsBackupTests: XCTestCase {
         XCTAssertEqual(ProfileSettings.presenting.soundTheme, SoundTheme.off.rawValue)
     }
 }
+
+final class UpdaterTests: XCTestCase {
+    /// The test runner isn't an app with a signing key, so it must never check.
+    func testBuildsWithoutAKeyDontUpdate() {
+        XCTAssertFalse(Updater.canUpdate(Bundle.main))
+        XCTAssertFalse(Updater.shared.isConfigured)
+    }
+}

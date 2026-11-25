@@ -144,6 +144,27 @@ private struct GeneralTab: View {
                     Text("Volume")
                 } onEditingChanged: { editing in if !editing { Self.preview() } }
             }
+            Section("Updates") {
+                if Updater.shared.isConfigured {
+                    Toggle("Check for updates automatically", isOn: model.bind({ Updater.shared.automaticallyChecks }, { Updater.shared.automaticallyChecks = $0 }))
+                    Toggle("Download and install updates automatically", isOn: model.bind({ Updater.shared.automaticallyDownloads }, { Updater.shared.automaticallyDownloads = $0 }))
+                        .disabled(!Updater.shared.automaticallyChecks)
+                    HStack {
+                        if let version = Updater.shared.availableVersion {
+                            Text("BarManager \(version) is available.")
+                        } else if let last = Updater.shared.lastCheck {
+                            Text("Last checked \(last.formatted(.relative(presentation: .named))).").foregroundStyle(.secondary)
+                        } else {
+                            Text("Not checked yet.").foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(Updater.shared.availableVersion == nil ? "Check Now" : "Install…") { Updater.shared.checkForUpdates() }
+                    }
+                } else {
+                    Text("This copy of BarManager can’t update itself. Download new versions from GitHub.")
+                        .foregroundStyle(.secondary)
+                }
+            }
             Section("Startup") {
                 Toggle("Launch at login", isOn: model.bind({ SMAppService.mainApp.status == .enabled }, { on in
                     do { try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch {
