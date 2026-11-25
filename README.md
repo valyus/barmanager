@@ -49,9 +49,10 @@ swift test
 
 ## Releasing
 
-1. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under a new `## [x.y.z] - YYYY-MM-DD` heading.
-2. Put the same `x.y.z` in [VERSION](VERSION) and commit.
-3. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
+1. Go through the [manual test checklist](docs/TESTING.md) on a release build.
+2. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under a new `## [x.y.z] - YYYY-MM-DD` heading.
+3. Put the same `x.y.z` in [VERSION](VERSION) and commit.
+4. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
 
 The **Release** workflow then tests, signs with Developer ID, notarizes, checks that Gatekeeper accepts the result, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. If a secret is missing or the certificate isn't a Developer ID, it stops before building rather than publish an unnotarized build.
 
