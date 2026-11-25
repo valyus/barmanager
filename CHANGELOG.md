@@ -6,6 +6,8 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-26
+
 ### Added
 - **Search Icons**: a Spotlight-style box that finds any menu bar icon by name and opens it, even a hidden one. Open it from the right-click menu or with a shortcut.
 - **Keyboard shortcuts** that work in any app: show or hide hidden icons, show all including Always Hidden, search, open one particular icon, and switch profiles.
