@@ -9,11 +9,34 @@ struct MenuBarItemWindow: Equatable {
     /// is compared with AppKit frames, and `x` is the same in both spaces.
     let frame: CGRect
 
+    /// True when the window server doesn't list items one by one (macOS 27),
+    /// so positions come from Accessibility instead.
+    private(set) static var usingStandIns = false
+
+    /// Every other app's menu bar item, left to right. Main thread only.
     static func all() -> [MenuBarItemWindow] {
+        let windows = windowServerItems()
+        // One window (or none) for the whole menu bar means the window server
+        // has stopped listing items separately; ask Accessibility instead.
+        if windows.count <= 1, AXIsProcessTrusted() {
+            let standIns = MenuBarCatalog.standInWindows()
+            if standIns.count > windows.count {
+                if !usingStandIns { NSLog("BarManager: menu bar items aren't separate windows; using Accessibility positions") }
+                usingStandIns = true
+                return standIns
+            }
+        }
+        usingStandIns = false
+        return windows
+    }
+
+    private static func windowServerItems() -> [MenuBarItemWindow] {
         let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        let ownPID = ProcessInfo.processInfo.processIdentifier
         guard let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] else { return [] }
         return list.compactMap { info in
             guard (info[kCGWindowLayer as String] as? Int) == statusLevel,
+                  (info[kCGWindowOwnerPID as String] as? pid_t) != ownPID,
                   let number = info[kCGWindowNumber as String] as? CGWindowID,
                   let pid = info[kCGWindowOwnerPID as String] as? pid_t,
                   let bounds = info[kCGWindowBounds as String] as? NSDictionary,

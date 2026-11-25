@@ -41,6 +41,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var isPeeking = false
     private var lastPeek: [CGWindowID: Date] = [:]
 
+    // Search, the bar below the menu bar, triggers, looks
+    private let iconBar = IconBar()
+    private let searchPanel = SearchPanel()
+    private let triggerEngine = TriggerEngine()
+    private let tint = MenuBarTint()
+    private var spacers: [NSStatusItem] = []
+    /// State triggers currently keeping the hidden icons open.
+    private var triggerHolds: Set<UUID> = []
+    /// True while the icons are open because a trigger opened them.
+    private var openedByTrigger = false
+    private var settingsObserver: NSObjectProtocol?
+
+    static let settingsChanged = Notification.Name("BarManager.settingsChanged")
+
     /// True while at least one section is pushed off screen.
     private var isHidingSomething: Bool {
         isCollapsed
@@ -97,6 +111,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         changeWatcher.onChange = { [weak self] ids in self?.peek(at: ids) }
         if Settings.showChangedIcons { changeWatcher.start() }
 
+        HotKeyCenter.shared.onAction = { [weak self] action in self?.perform(action) }
+        iconBar.onChoose = { [weak self] entry in self?.activate(entry) }
+        searchPanel.onChoose = { [weak self] entry in self?.activate(entry) }
+        triggerEngine.onStart = { [weak self] rule in self?.triggerStarted(rule) }
+        triggerEngine.onEnd = { [weak self] rule in self?.triggerEnded(rule) }
+        settingsObserver = NotificationCenter.default.addObserver(forName: Self.settingsChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.applySettings()
+        }
+        AppBridge.controller = self
+        HotKeyCenter.shared.reload()
+        triggerEngine.rulesChanged()
+        tint.apply()
+        updateSpacers()
+        if Settings.itemSpacing != .standard { MenuBarSpacing.apply(Settings.itemSpacing) }
+        if AXIsProcessTrusted() { MenuBarCatalog.load() }
+
         expand(showAll: false, persist: false)
 
         // Let the menu bar lay the items out before measuring positions.
@@ -129,10 +159,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         // Safety net: if it ever lands right of the arrow, it would push the
         // arrow off screen, so take it away and show everything.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self, let hider = self.hiderItem?.button?.window?.frame,
-                  let arrow = self.toggleItem.button?.window?.frame,
-                  hider.maxX > arrow.minX + 1 else { return }
-            NSLog("BarManager: hider landed right of the arrow; showing icons")
+            guard let self, self.hiderItem != nil else { return }
+            let hider = self.hiderItem?.button?.window?.frame
+            let arrow = self.toggleItem.button?.window?.frame
+            let landedRight = hider.map { h in arrow.map { h.maxX > $0.minX + 1 } ?? false } ?? false
+            // A menu bar that lays items out differently (macOS 27) could push the
+            // arrow itself away; never leave the user without it.
+            let arrowGone = arrow.map { a in !NSScreen.screens.contains { $0.frame.intersects(a) } } ?? false
+            guard landedRight || arrowGone else { return }
+            NSLog("BarManager: hiding would push the arrow off screen; showing icons")
             self.expand(showAll: false)
         }
     }
@@ -163,20 +198,48 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let isRightClick = event.type == .rightMouseUp || event.modifierFlags.contains(.control)
 
         if isRightClick {
+            iconBar.close()
             showMenu()
-        } else if event.modifierFlags.contains(.option) {
+        } else {
+            toggle(showAll: event.modifierFlags.contains(.option))
+        }
+    }
+
+    /// What a click on the arrow (or its shortcut) does.
+    private func toggle(showAll: Bool) {
+        isPeeking = false
+        openedByTrigger = false
+        if iconBar.isOpen {
+            iconBar.close()
+            return
+        }
+        if showAll {
             if showingAlwaysHidden {
                 collapse()
+            } else if isCollapsed, shouldUseBar(showAll: true) {
+                openIconBar(showAll: true)
             } else {
                 expand(showAll: true)
                 playSound(.expand)
             }
-        } else {
-            if isCollapsed {
-                beginSession(byHover: false)
+        } else if isCollapsed {
+            if shouldUseBar(showAll: false) {
+                openIconBar(showAll: false)
             } else {
-                collapse()
+                beginSession(byHover: false)
             }
+        } else {
+            collapse()
+        }
+    }
+
+    private func perform(_ action: HotKeyAction) {
+        switch action {
+        case .toggleHidden: toggle(showAll: false)
+        case .showAll: toggle(showAll: true)
+        case .search: openSearch()
+        case .openItem(let key): openItem(key: key)
+        case .applyProfile(let id): applyProfile(id)
         }
     }
 
@@ -239,6 +302,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func scheduleAutoHide() {
         autoHideTimer?.invalidate()
+        guard triggerHolds.isEmpty else { return } // a trigger keeps them open
         let delay = isPeeking ? Self.peekDuration : Settings.autoHideDelay
         guard delay > 0 else { return }
         autoHideTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
@@ -364,7 +428,27 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         MenuBarItemWindow.all().filter { $0.frame.minX >= bounds.minX - 1 && $0.frame.maxX <= bounds.maxX + 1 }
     }
 
-    private func hiddenSection() -> [MenuBarItemWindow] { Self.hiddenSection(sectionBounds()) }
+    private func hiddenSection() -> [MenuBarItemWindow] {
+        let own = ownItemFrames()
+        return Self.hiddenSection(sectionBounds()).filter { window in
+            !own.contains { abs($0.minX - window.frame.minX) < 2 && abs($0.width - window.frame.width) < 3 }
+        }
+    }
+
+    /// BarManager's own items (arrow, divider, spacers). On macOS 26 they're
+    /// listed as Control Center's, so they're told apart by position.
+    private func ownItemFrames() -> [CGRect] {
+        ([toggleItem, alwaysHiddenItem] + spacers).compactMap { $0.button?.window?.frame }
+    }
+
+    /// Which section an item at `frame` (from Accessibility) is in right now.
+    private func section(of frame: CGRect) -> MenuBarSection {
+        guard let arrow = toggleItem.button?.window?.frame, frame.maxX <= arrow.minX + 1 else { return .visible }
+        if Settings.alwaysHiddenEnabled, let divider = alwaysHiddenItem.button?.window?.frame, frame.maxX <= divider.minX + 1 {
+            return .alwaysHidden
+        }
+        return .hidden
+    }
 
     // MARK: - Menu
 
@@ -372,6 +456,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         addHiddenIconsSection(to: menu)
+
+        let search = NSMenuItem(title: "Search Icons…", action: #selector(searchFromMenu), keyEquivalent: "")
+        search.target = self
+        if let combo = Settings.hotKeys[HotKeyAction.search.id] { search.toolTip = "Shortcut: \(combo.displayString)" }
+        search.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+        menu.addItem(search)
+        menu.addItem(profilesMenuItem())
+        menu.addItem(.separator())
 
         let delayMenu = NSMenu()
         for (title, seconds) in [("Never", 0.0), ("5 seconds", 5), ("10 seconds", 10), ("30 seconds", 30), ("1 minute", 60)] {
@@ -433,6 +525,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(login)
 
         menu.addItem(.separator())
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         let help = NSMenuItem(title: "How to Use…", action: #selector(showHelp), keyEquivalent: "")
         help.target = self
         menu.addItem(help)
@@ -452,16 +547,19 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func setAutoHideDelay(_ sender: NSMenuItem) {
         Settings.autoHideDelay = sender.representedObject as? TimeInterval ?? 10
+        settingsEdited()
         if !isCollapsed { scheduleAutoHide() }
     }
 
     @objc private func toggleShowOnHover(_ sender: NSMenuItem) {
         Settings.showOnHover.toggle()
+        settingsEdited()
     }
 
     @objc private func setSoundTheme(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let theme = SoundTheme(rawValue: raw) else { return }
         Settings.soundTheme = theme
+        settingsEdited()
         playSound(.expand) // preview
     }
 
@@ -626,6 +724,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func toggleShowChangedIcons(_ sender: NSMenuItem) {
         Settings.showChangedIcons.toggle()
+        settingsEdited()
         if Settings.showChangedIcons {
             if !ChangeWatcher.hasPermission { ChangeWatcher.requestPermission() }
             if !AXIsProcessTrusted() { requestAccessibility() }
@@ -695,6 +794,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func setArrowStyle(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let style = ArrowStyle(rawValue: raw) else { return }
         Settings.arrowStyle = style
+        settingsEdited()
         updateToggleIcon()
     }
 
@@ -703,6 +803,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         alwaysHiddenItem.isVisible = Settings.alwaysHiddenEnabled
         // Show the double divider so the user can drag icons past it.
         expand(showAll: true)
+        settingsEdited()
     }
 
     @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
@@ -727,6 +828,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     /// Called as the app quits: restore normal widths so nothing stays pushed off screen.
     func prepareForTermination() {
+        iconBar.close(notify: false)
+        tint.remove()
+        triggerEngine.stop()
         removeHider()
         parkedHider.map(NSStatusBar.system.removeStatusItem)
         parkedHider = nil
@@ -746,7 +850,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         • They also hide on their own after a few seconds (right-click → Auto-hide After).
         • Optionally, a hidden icon that changes (say, gets a badge) shows for 5 seconds. Turn it on, and pick icons that never show, under right-click → Show Icons When They Change.
         • ⌥-click the arrow to also reveal the “Always Hidden” section (enable it from the right-click menu, then ⌘-drag icons left of the double divider ‖).
-        • Right-click the arrow for settings and Quit.
+        • Right-click → Search Icons… finds any icon by name and opens it.
+        • Right-click → Settings… for keyboard shortcuts, profiles, triggers, a bar below the menu bar for icons that don’t fit next to the notch, menu bar tint and backup.
         """
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
@@ -812,6 +917,313 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             NSColor.black.setFill()
             NSBezierPath(rect: NSRect(x: rect.midX - 2, y: 1, width: 1, height: 14)).fill()
             NSBezierPath(rect: NSRect(x: rect.midX + 1, y: 1, width: 1, height: 14)).fill()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+}
+
+// MARK: - Search, icon bar, shortcuts, triggers, profiles, looks
+
+/// Lets the settings window reach the running controller.
+enum AppBridge {
+    static weak var controller: MenuBarController?
+}
+
+extension MenuBarController {
+    // MARK: Opening items
+
+    /// Every menu bar item, with its section and picture.
+    func picturedEntries(_ entries: [MenuBarEntry], sections: Set<MenuBarSection>? = nil) -> [PicturedEntry] {
+        let windows = MenuBarItemWindow.all()
+        let own = ownItemFrames()
+        return entries.compactMap { entry in
+            guard !own.contains(where: { abs($0.minX - entry.frame.minX) < 2 && abs($0.width - entry.frame.width) < 3 }) else { return nil }
+            let section = section(of: entry.frame)
+            if let sections, !sections.contains(section) { return nil }
+            let window = windows.first { abs($0.frame.minX - entry.frame.minX) < 2 && abs($0.frame.width - entry.frame.width) < 3 }
+            let image = window.flatMap { changeWatcher.snapshots[$0.id] } ?? entry.appIcon
+            return PicturedEntry(entry: entry, image: image, section: section)
+        }
+    }
+
+    /// Shows the item's section if needed, then opens its menu.
+    func activate(_ entry: MenuBarEntry) {
+        iconBar.close(notify: false)
+        isPeeking = false
+        let frame = MenuBarCatalog.currentFrame(of: entry) ?? entry.frame
+        let section = section(of: frame)
+        switch section {
+        case .visible:
+            MenuBarCatalog.press(entry)
+            return
+        case .hidden where isCollapsed:
+            playSound(.expand)
+            expand(showAll: false, persist: false)
+        case .alwaysHidden where !showingAlwaysHidden:
+            playSound(.expand)
+            expand(showAll: true, persist: false)
+        default:
+            scheduleAutoHide()
+        }
+        // Give the menu bar a moment to lay the icons out before clicking.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            if !MenuBarCatalog.press(entry) { NSSound.beep() }
+        }
+    }
+
+    func openItem(key: String) {
+        guard AXIsProcessTrusted() else { return askForAccessibility(reason: "open menu bar icons with a shortcut") }
+        MenuBarCatalog.load { [weak self] entries in
+            guard let entry = entries.first(where: { $0.key == key }) else { return NSSound.beep() }
+            self?.activate(entry)
+        }
+    }
+
+    func openSearch() {
+        guard AXIsProcessTrusted() else { return askForAccessibility(reason: "search menu bar icons") }
+        iconBar.close(notify: false)
+        searchPanel.show(picturedEntries(MenuBarCatalog.latest))
+        MenuBarCatalog.load { [weak self] entries in
+            guard let self, self.searchPanel.isOpen else { return }
+            self.searchPanel.update(self.picturedEntries(entries))
+        }
+    }
+
+    @objc func searchFromMenu() {
+        // Let the menu finish closing first, or the panel can't take the keyboard.
+        DispatchQueue.main.async { [weak self] in self?.openSearch() }
+    }
+
+    private func askForAccessibility(reason: String) {
+        let alert = NSAlert()
+        alert.messageText = "BarManager needs Accessibility permission to \(reason)."
+        alert.informativeText = "Turn on BarManager in System Settings → Privacy & Security → Accessibility, then try again."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            requestAccessibility()
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
+    // MARK: Bar below the menu bar
+
+    /// Whether clicking the arrow should open the bar instead of the menu bar.
+    func shouldUseBar(showAll: Bool) -> Bool {
+        switch Settings.revealMode {
+        case .menuBar: return false
+        case .bar: return AXIsProcessTrusted()
+        case .automatic:
+            guard AXIsProcessTrusted(), let arrow = toggleItem.button?.window?.frame,
+                  let screen = toggleItem.button?.window?.screen else { return false }
+            var windows = hiddenSection()
+            if showAll, Settings.alwaysHiddenEnabled, let divider = alwaysHiddenItem.button?.window?.frame {
+                windows += MenuBarItemWindow.all().filter { $0.frame.maxX <= divider.minX + 1 }
+            }
+            let needed = windows.reduce(0) { $0 + $1.frame.width }
+            // Icons can't go behind the notch or over the frontmost app's menus.
+            var leftLimit = screen.frame.minX
+            if let notchRight = screen.auxiliaryTopRightArea { leftLimit = max(leftLimit, notchRight.minX) }
+            if let menus = AX.appMenusMaxX(), menus < arrow.minX { leftLimit = max(leftLimit, menus) }
+            return needed > arrow.minX - leftLimit - 8
+        }
+    }
+
+    func openIconBar(showAll: Bool) {
+        guard let anchor = toggleItem.button?.window?.frame else { return }
+        let sections: Set<MenuBarSection> = showAll ? [.hidden, .alwaysHidden] : [.hidden]
+        playSound(.expand)
+        MenuBarCatalog.load { [weak self] entries in
+            guard let self, self.isCollapsed else { return }
+            let items = self.picturedEntries(entries, sections: sections)
+            // Freshest pictures of the icons themselves, if allowed.
+            let windows = MenuBarItemWindow.all()
+            let ids = items.compactMap { item in
+                windows.first { abs($0.frame.minX - item.entry.frame.minX) < 2 }?.id
+            }
+            guard ChangeWatcher.hasPermission, !MenuBarItemWindow.usingStandIns, !ids.isEmpty else {
+                return self.iconBar.show(items, below: anchor)
+            }
+            Task { @MainActor [weak self] in
+                let captured = Dictionary(await ChangeWatcher.capture(ids), uniquingKeysWith: { a, _ in a })
+                guard let self, self.isCollapsed else { return }
+                let pictured = items.map { item -> PicturedEntry in
+                    guard let window = windows.first(where: { abs($0.frame.minX - item.entry.frame.minX) < 2 }),
+                          let image = captured[window.id] else { return item }
+                    return PicturedEntry(entry: item.entry, image: NSImage(cgImage: image, size: NSSize(width: image.width / 2, height: image.height / 2)), section: item.section)
+                }
+                self.iconBar.show(pictured, below: anchor)
+            }
+        }
+    }
+
+    // MARK: Triggers
+
+    private func triggerStarted(_ rule: TriggerRule) {
+        switch rule.action {
+        case .applyProfile(let id):
+            applyProfile(id)
+        case .showHiddenIcons:
+            if !rule.condition.isEvent { triggerHolds.insert(rule.id) }
+            if isCollapsed {
+                openedByTrigger = true
+                beginSession(byHover: false, persist: false)
+            } else {
+                autoHideTimer?.invalidate()
+                if triggerHolds.isEmpty { scheduleAutoHide() }
+            }
+        }
+    }
+
+    private func triggerEnded(_ rule: TriggerRule) {
+        guard triggerHolds.remove(rule.id) != nil, triggerHolds.isEmpty else { return }
+        if openedByTrigger, !isCollapsed {
+            openedByTrigger = false
+            scheduleAutoHide()
+        }
+    }
+
+    // MARK: Profiles
+
+    func applyProfile(_ id: UUID) {
+        guard let profile = Settings.profiles.first(where: { $0.id == id }) else { return }
+        profile.settings.store()
+        Settings.activeProfile = id
+        applySettings()
+        if profile.settings.hideIcons {
+            if !isCollapsed { collapse(sound: false) }
+        } else if isCollapsed {
+            expand(showAll: false)
+        }
+    }
+
+    /// The profile matching the current settings, if any.
+    func currentProfileID() -> UUID? {
+        let now = ProfileSettings.current(isCollapsed: isCollapsed)
+        let matches = Settings.profiles.filter { profile in
+            var settings = profile.settings
+            settings.hideIcons = now.hideIcons
+            return settings == now
+        }
+        if let active = Settings.activeProfile, matches.contains(where: { $0.id == active }) { return active }
+        return matches.first?.id
+    }
+
+    func currentProfileSettings() -> ProfileSettings { ProfileSettings.current(isCollapsed: isCollapsed) }
+
+    private func profilesMenuItem() -> NSMenuItem {
+        let submenu = NSMenu()
+        let current = currentProfileID()
+        for profile in Settings.profiles {
+            let item = NSMenuItem(title: profile.name, action: #selector(profileChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = profile.id.uuidString
+            item.state = profile.id == current ? .on : .off
+            if let combo = Settings.hotKeys[HotKeyAction.applyProfile(profile.id).id] { item.toolTip = "Shortcut: \(combo.displayString)" }
+            submenu.addItem(item)
+        }
+        if !Settings.profiles.isEmpty { submenu.addItem(.separator()) }
+        let save = NSMenuItem(title: "Save Current Settings as Profile…", action: #selector(saveProfileFromMenu), keyEquivalent: "")
+        save.target = self
+        submenu.addItem(save)
+        let manage = NSMenuItem(title: "Manage Profiles…", action: #selector(openProfileSettings), keyEquivalent: "")
+        manage.target = self
+        submenu.addItem(manage)
+        let item = NSMenuItem(title: "Profile", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func profileChosen(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let id = UUID(uuidString: raw) else { return }
+        applyProfile(id)
+    }
+
+    @objc private func saveProfileFromMenu() {
+        let alert = NSAlert()
+        alert.messageText = "Save Current Settings as a Profile"
+        alert.informativeText = "Saves whether icons are hidden, the auto-hide delay, hover, change alerts, sound, arrow, where hidden icons show and the menu bar tint."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.placeholderString = "Work, Home, Presenting…"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+        let profile = Profile(name: name.isEmpty ? "Profile \(Settings.profiles.count + 1)" : name,
+                              settings: currentProfileSettings())
+        Settings.profiles.append(profile)
+        Settings.activeProfile = profile.id
+        SettingsWindowController.shared.refresh()
+    }
+
+    @objc func openSettings() { SettingsWindowController.shared.show(tab: .general) }
+
+    @objc private func openProfileSettings() { SettingsWindowController.shared.show(tab: .profiles) }
+
+    // MARK: Applying settings
+
+    /// Something changed from the menu; keep the settings window in step.
+    func settingsEdited() {
+        SettingsWindowController.shared.refresh()
+    }
+
+    /// Brings the menu bar in line with Settings after the settings window,
+    /// a profile or an import changed them.
+    func applySettings() {
+        updateToggleIcon()
+        if alwaysHiddenItem.isVisible != Settings.alwaysHiddenEnabled {
+            alwaysHiddenItem.isVisible = Settings.alwaysHiddenEnabled
+            if !Settings.alwaysHiddenEnabled {
+                alwaysHiddenItem.length = Self.separatorLength
+                showingAlwaysHidden = false
+            } else if isCollapsed {
+                hideAlwaysHiddenSection()
+            }
+        }
+        if Settings.showChangedIcons { changeWatcher.start() } else { changeWatcher.stop() }
+        HotKeyCenter.shared.reload()
+        triggerEngine.rulesChanged()
+        tint.apply()
+        updateSpacers()
+        if !isCollapsed { scheduleAutoHide() }
+        SettingsWindowController.shared.refresh()
+    }
+
+    func applySpacing() { MenuBarSpacing.apply(Settings.itemSpacing) }
+
+    /// Adds or removes blank spacer items to match the setting.
+    private func updateSpacers() {
+        while spacers.count < Settings.spacerCount {
+            let index = spacers.count
+            // Start next to the arrow, on its visible side, where it's easy to find.
+            let arrow = UserDefaults.standard.object(forKey: "NSStatusItem Preferred Position BarManager.toggle") as? Double ?? 0
+            Self.seedPosition(max(arrow - 1 - Double(index), 0), for: "BarManager.spacer.\(index)")
+            let item = NSStatusBar.system.statusItem(withLength: 14)
+            item.autosaveName = "BarManager.spacer.\(index)"
+            item.behavior = []
+            item.button?.image = Self.spacerImage()
+            item.button?.toolTip = "Spacer \(index + 1): ⌘-drag it between icons to group them"
+            item.button?.setAccessibilityLabel("Spacer")
+            spacers.append(item)
+        }
+        while spacers.count > Settings.spacerCount {
+            NSStatusBar.system.removeStatusItem(spacers.removeLast())
+        }
+    }
+
+    /// A faint dot, so a spacer can be found and dragged but barely shows.
+    private static func spacerImage() -> NSImage {
+        let image = NSImage(size: NSSize(width: 14, height: 16), flipped: false) { rect in
+            NSColor.black.withAlphaComponent(0.3).setFill()
+            NSBezierPath(ovalIn: NSRect(x: rect.midX - 1.5, y: rect.midY - 1.5, width: 3, height: 3)).fill()
             return true
         }
         image.isTemplate = true
