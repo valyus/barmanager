@@ -178,3 +178,31 @@ final class MoveTargetTests: XCTestCase {
         XCTAssertNil(MoveTarget.dropX(to: .alwaysHidden, from: .hidden, arrow: arrow, hiddenEdge: hider, divider: nil))
     }
 }
+
+final class ItemMatchingTests: XCTestCase {
+    func testMatchesWindowsWiderThanTheirAccessibilityFrame() {
+        // Measured on macOS 26.7.3: Shottr and Battery have padded windows.
+        let shottrAX = CGRect(x: -3908, y: 0, width: 24, height: 24)
+        let shottrWindow = CGRect(x: -3915, y: 0, width: 38, height: 33)
+        let batteryAX = CGRect(x: -4187, y: 0, width: 54, height: 24)
+        let batteryWindow = CGRect(x: -4195, y: 0, width: 71, height: 33)
+        XCTAssertTrue(shottrWindow.isSameMenuBarItem(as: shottrAX))
+        XCTAssertTrue(batteryWindow.isSameMenuBarItem(as: batteryAX))
+        XCTAssertTrue(CGRect(x: -3949, y: 0, width: 34, height: 33).isSameMenuBarItem(as: CGRect(x: -3950, y: 0, width: 36, height: 24)))
+    }
+
+    func testDoesNotMatchTheNeighbour() {
+        let typeWhisperWindow = CGRect(x: -3949, y: 0, width: 34, height: 33)
+        let shottrAX = CGRect(x: -3908, y: 0, width: 24, height: 24)
+        XCTAssertFalse(typeWhisperWindow.isSameMenuBarItem(as: shottrAX))
+        XCTAssertFalse(CGRect(x: -3877, y: 0, width: 5016, height: 33).isSameMenuBarItem(as: shottrAX), "the hiding item")
+    }
+
+    func testMatchesIdentities() {
+        let window = MenuBarItemWindow(id: 7, pid: 1, frame: CGRect(x: -3915, y: 0, width: 38, height: 33))
+        let entry = MenuBarEntry(key: "cc.ffitch.shottr", name: "Shottr", appIcon: nil, pid: 2,
+                                 frame: CGRect(x: -3908, y: 0, width: 24, height: 24),
+                                 element: AXUIElementCreateApplication(2))
+        XCTAssertEqual(ItemIdentity.match([window], to: [entry])[7]?.name, "Shottr")
+    }
+}

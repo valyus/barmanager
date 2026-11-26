@@ -149,6 +149,6 @@ Bugs found, with steps:
 - 2026-11-26, fixed: after moving an icon from the Icons tab, ⌘ stayed held down system-wide, so every click anywhere was a ⌘-click (the arrow stopped responding). The posted ⌘-drag events left the ⌘ flag set.
 - 2026-11-26, fixed: the Icons tab and search listed about 9 nameless "Control Center" rows, Control Center modules that have no place in the menu bar (zero size).
 - 2026-11-26, fixed: the Settings window opened 640 pt wide, too narrow for its seven tabs, so macOS put every tab under the toolbar's » button (and choosing one from there didn't always switch). It now opens at 820 pt and can't be made narrower than 800.
-- 2026-11-26, open: on a crowded notched menu bar, icons macOS has no room for (here Figma, Zoom, Grammarly, Tailscale, TrendAI) report a position at the far left (x≈0). They're listed as Hidden but can't be seen or dragged, and they don't appear in the right-click list.
+- 2026-11-26, fixed (now marked No room in the Icons tab and left out of search and the bar): on a crowded notched menu bar, icons macOS has no room for (here Figma, Zoom, Grammarly, Tailscale, TrendAI) report a position at the far left (x≈0). They're listed as Hidden but can't be seen or dragged, and they don't appear in the right-click list.
 - 2026-11-26, fixed: the menu bar tint never showed on macOS 26; it sat under the menu bar's own background. It now lies over the whole bar, icons included.
-- 2026-11-26, open: in the right-click list, Shottr and Battery show as "Hidden Icon" instead of their names.
+- 2026-11-26, fixed: in the right-click list, Shottr and Battery showed as "Hidden Icon" instead of their names. Their windows are wider than their Accessibility frames; icons are now matched by center.

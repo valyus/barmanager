@@ -6,6 +6,9 @@ struct PicturedEntry {
     /// A snapshot of the icon itself if there is one, else the app's icon.
     let image: NSImage?
     let section: MenuBarSection
+    /// False when macOS has no room to draw the icon at all (a crowded menu bar
+    /// next to the notch): it has no window, so it can't be shown or opened.
+    var hasRoom = true
 }
 
 enum MenuBarSection: String {

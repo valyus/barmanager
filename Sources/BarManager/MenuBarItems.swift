@@ -73,6 +73,15 @@ struct MenuBarItemWindow: Equatable {
     }
 }
 
+extension CGRect {
+    /// True when an Accessibility frame and a window frame are the same menu bar
+    /// item. Some items' windows are wider than their Accessibility frame
+    /// (padding on both sides), so compare centers, not edges.
+    func isSameMenuBarItem(as other: CGRect) -> Bool {
+        abs(midX - other.midX) <= 3 && abs(width - other.width) <= 20
+    }
+}
+
 /// Forwards mouse enter/exit from a tracking area to closures.
 final class HoverTracker: NSResponder {
     var onEnter: (() -> Void)?

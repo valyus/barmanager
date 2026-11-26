@@ -37,9 +37,7 @@ struct ItemIdentity {
     static func match(_ windows: [MenuBarItemWindow], to entries: [MenuBarEntry]) -> [CGWindowID: ItemIdentity] {
         var result: [CGWindowID: ItemIdentity] = [:]
         for entry in entries {
-            guard let window = windows.first(where: {
-                abs($0.frame.minX - entry.frame.minX) < 2 && abs($0.frame.width - entry.frame.width) < 3
-            }) else { continue }
+            guard let window = windows.first(where: { $0.frame.isSameMenuBarItem(as: entry.frame) }) else { continue }
             result[window.id] = ItemIdentity(key: entry.key, name: entry.name, appIcon: entry.appIcon)
         }
         return result

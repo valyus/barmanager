@@ -966,9 +966,12 @@ extension MenuBarController {
             guard !own.contains(where: { abs($0.minX - entry.frame.minX) < 2 && abs($0.width - entry.frame.width) < 3 }) else { return nil }
             let section = section(of: entry.frame)
             if let sections, !sections.contains(section) { return nil }
-            let window = windows.first { abs($0.frame.minX - entry.frame.minX) < 2 && abs($0.frame.width - entry.frame.width) < 3 }
+            let window = windows.first { $0.frame.isSameMenuBarItem(as: entry.frame) }
             let image = window.flatMap { changeWatcher.snapshots[$0.id] } ?? entry.appIcon
-            return PicturedEntry(entry: entry, image: image, section: section)
+            // Every icon macOS draws has a window, shown or pushed off screen. Without
+            // one, there's no room for it. (Stand-ins on macOS 27 can't tell.)
+            let hasRoom = window != nil || MenuBarItemWindow.usingStandIns
+            return PicturedEntry(entry: entry, image: image, section: section, hasRoom: hasRoom)
         }
     }
 
@@ -1008,10 +1011,11 @@ extension MenuBarController {
     func openSearch() {
         guard AXIsProcessTrusted() else { return askForAccessibility(reason: "search menu bar icons") }
         iconBar.close(notify: false)
-        searchPanel.show(picturedEntries(MenuBarCatalog.latest))
+        // Icons macOS has no room for can't be opened, so they aren't offered.
+        searchPanel.show(picturedEntries(MenuBarCatalog.latest).filter(\.hasRoom))
         MenuBarCatalog.load { [weak self] entries in
             guard let self, self.searchPanel.isOpen else { return }
-            self.searchPanel.update(self.picturedEntries(entries))
+            self.searchPanel.update(self.picturedEntries(entries).filter(\.hasRoom))
         }
     }
 
@@ -1064,11 +1068,11 @@ extension MenuBarController {
         playSound(.expand)
         MenuBarCatalog.load { [weak self] entries in
             guard let self, self.isCollapsed else { return }
-            let items = self.picturedEntries(entries, sections: sections)
+            let items = self.picturedEntries(entries, sections: sections).filter(\.hasRoom)
             // Freshest pictures of the icons themselves, if allowed.
             let windows = MenuBarItemWindow.all()
             let ids = items.compactMap { item in
-                windows.first { abs($0.frame.minX - item.entry.frame.minX) < 2 }?.id
+                windows.first { $0.frame.isSameMenuBarItem(as: item.entry.frame) }?.id
             }
             guard ChangeWatcher.hasPermission, !MenuBarItemWindow.usingStandIns, !ids.isEmpty else {
                 return self.iconBar.show(items, below: anchor)
@@ -1077,7 +1081,7 @@ extension MenuBarController {
                 let captured = Dictionary(await ChangeWatcher.capture(ids), uniquingKeysWith: { a, _ in a })
                 guard let self, self.isCollapsed else { return }
                 let pictured = items.map { item -> PicturedEntry in
-                    guard let window = windows.first(where: { abs($0.frame.minX - item.entry.frame.minX) < 2 }),
+                    guard let window = windows.first(where: { $0.frame.isSameMenuBarItem(as: item.entry.frame) }),
                           let image = captured[window.id] else { return item }
                     return PicturedEntry(entry: item.entry, image: NSImage(cgImage: image, size: NSSize(width: image.width / 2, height: image.height / 2)), section: item.section)
                 }
