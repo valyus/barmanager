@@ -54,7 +54,7 @@ swift test
 3. Put the same `x.y.z` in [VERSION](VERSION) and commit.
 4. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
 
-The **Release** workflow then tests, signs with Developer ID, notarizes, checks that Gatekeeper accepts the result, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. If a secret is missing or the certificate isn't a Developer ID, it stops before building rather than publish an unnotarized build.
+The **Release** workflow then tests, signs with Developer ID, notarizes, checks that Gatekeeper accepts the result, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. If none of the signing secrets are set, a tag push skips the release with a notice and the workflow passes. If only some are set, or the certificate isn't a Developer ID, it fails before building rather than publish an unnotarized build.
 
 ### Releasing without notarization
 
@@ -67,7 +67,7 @@ scripts/make-appcast.sh
 gh release create vx.y.z dist/BarManager-x.y.z.dmg dist/BarManager-x.y.z.zip dist/SHA256SUMS-x.y.z.txt dist/appcast.xml --title "BarManager x.y.z" --notes-file <that version's changelog entry>
 ```
 
-`appcast.xml` must be attached to every release: installed copies look for it at `releases/latest/download/appcast.xml`. Creating the release creates the tag, which starts the Release workflow; it fails at its secrets check without touching the release.
+`appcast.xml` must be attached to every release: installed copies look for it at `releases/latest/download/appcast.xml`. Creating the release creates the tag, which starts the Release workflow; with no signing secrets set, it skips itself with a notice and leaves the release alone.
 
 To replace the files of a release that's already published (like 1.1.0, which went out before notarization was set up), run **Release** by hand from the Actions tab with that tag. It keeps the release notes and swaps in the notarized files.
 
