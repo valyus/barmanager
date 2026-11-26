@@ -15,6 +15,8 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 - Releases are now checked end to end: the Release workflow stops early if a signing or notarization secret is missing, signs only with Developer ID, signs the `.dmg` too, and checks that Gatekeeper accepts the build before publishing. It can also be run by hand to replace an existing release's files with notarized ones. `scripts/set-release-secrets.sh` checks and uploads the secrets.
 
 ### Fixed
+- Icons whose windows are a little wider than the icon (Shottr, Battery and others) now show their names and pictures in the hidden icons list, search and the bar below the menu bar, instead of "Hidden Icon".
+- Icons macOS has no room to draw at all on a crowded menu bar are marked **No room** in Settings → Icons and left out of search and the bar below the menu bar, where opening them did nothing.
 - The menu bar tint shows again on macOS 26. It now colors the whole bar like tinted glass, icons and app menus included, up to 60% strength.
 - The Settings window opens wide enough to show all its tabs. Before, they were all hidden under a » button.
 - Search and Settings → Icons no longer list empty “Control Center” entries for Control Center modules that aren't in the menu bar.

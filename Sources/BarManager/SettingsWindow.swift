@@ -77,8 +77,10 @@ final class SettingsModel: ObservableObject {
             guard let self else { return }
             let pictured = AppBridge.controller?.picturedEntries(entries) ?? []
             let order: [MenuBarSection] = [.visible, .hidden, .alwaysHidden]
-            // Right to left within each section, as they appear from the arrow.
+            // Right to left within each section, as they appear from the arrow;
+            // icons macOS has no room for last.
             self.icons = pictured.sorted {
+                if $0.hasRoom != $1.hasRoom { return $0.hasRoom }
                 let a = order.firstIndex(of: $0.section)!, b = order.firstIndex(of: $1.section)!
                 return a != b ? a < b : $0.entry.frame.minX > $1.entry.frame.minX
             }
@@ -355,7 +357,10 @@ private struct IconsTab: View {
                     }
                     .width(min: 160, ideal: 220)
                     TableColumn("Section") { item in
-                        if model.movingKey == item.entry.key {
+                        if !item.hasRoom {
+                            Text("No room").foregroundStyle(.secondary)
+                                .help("macOS has no room to draw this icon, so it can’t be shown or opened. Quit an app with menu bar icons, or move icons you rarely need out of the way.")
+                        } else if model.movingKey == item.entry.key {
                             HStack(spacing: 4) { ProgressView().controlSize(.small); Text("Moving…").foregroundStyle(.secondary) }
                         } else {
                             Picker("", selection: Binding(get: { item.section }, set: { model.move(item, to: $0) })) {
