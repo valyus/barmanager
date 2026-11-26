@@ -49,7 +49,7 @@ final class MenuBarTint {
             let height = barHeight
             let frame = NSRect(x: screen.frame.minX, y: screen.frame.maxY - height, width: screen.frame.width, height: height)
 
-            let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            let panel = TintPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = false
@@ -64,6 +64,7 @@ final class MenuBarTint {
             view.showBorder = Settings.showBorder
             panel.contentView = view
             panel.orderFrontRegardless()
+            panel.setFrame(frame, display: true) // again, in case macOS nudged it while ordering in
             panels.append(panel)
         }
     }
@@ -72,6 +73,11 @@ final class MenuBarTint {
         panels.forEach { $0.orderOut(nil) }
         panels = []
     }
+}
+
+/// macOS moves ordinary windows out from under the menu bar; the tint has to sit on it.
+private final class TintPanel: NSPanel {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 private final class TintView: NSView {

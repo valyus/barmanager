@@ -20,12 +20,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         model.tab = tab
         model.revision += 1
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 540),
+            // Wide enough for all seven tabs; narrower and macOS hides every one of them under ».
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "BarManager Settings"
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
-            window.setContentSize(NSSize(width: 640, height: 540))
+            window.setContentSize(NSSize(width: 820, height: 560))
+            window.contentMinSize = NSSize(width: 800, height: 420)
             window.center()
             window.delegate = self
             self.window = window
@@ -130,7 +132,7 @@ private struct SettingsView: View {
             BackupTab(model: model).tabItem { Label("Backup", systemImage: "externaldrive") }.tag(SettingsTab.backup)
         }
         .padding()
-        .frame(minWidth: 600, minHeight: 500)
+        .frame(minWidth: 800, minHeight: 420)
     }
 }
 
