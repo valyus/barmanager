@@ -26,9 +26,9 @@ Written for 1.1.0. When a feature changes, update its section here along with [F
 - [ ] Right-click → **Search Icons…**: a search box opens near the top of the screen with the cursor in it, and the app you were in stays in front.
 - [ ] It lists every menu bar icon, each with its section (Visible, Hidden, Always Hidden).
 - [ ] Type `wi`: Wi‑Fi comes first. Type `cc`: Control Center items appear.
-- [ ] **⚠︎** ↓ and ↑ move the highlight through the results and the list scrolls to it. (Single-line text fields can swallow arrow keys.)
+- [x] ↓ and ↑ move the highlight through the results and the list scrolls to it. *Passed 2026-11-26 on macOS 26.7.3.*
 - [ ] Return on a **visible** icon: its menu opens right away.
-- [ ] Return on a **hidden** icon: the hidden icons show, then its menu opens under it.
+- [x] Return on a **hidden** icon: the hidden icons show, then its menu opens under it. *Passed 2026-11-26 on macOS 26.7.3.* (Battery, Shottr, TypeWhisper; all opened through Accessibility, so the real-click fallback wasn't needed.)
 - [ ] Return on an **Always Hidden** icon: that section shows too, then its menu opens.
 - [ ] Clicking a result does the same as Return.
 - [ ] Esc closes the box. Clicking another app also closes it.
@@ -93,7 +93,7 @@ In Settings → **Triggers**, add each, then check:
 - [ ] **An app is in front** (pick Safari) → Show hidden icons: switching to Safari shows them and they stay; leaving Safari lets them hide after the auto-hide delay.
 - [ ] **An app is open** → Switch to Presenting: opening the app switches profile.
 - [ ] **The network changes** → Show hidden icons: turn Wi‑Fi off and on; icons show, then hide after the delay. Nothing happens when BarManager starts.
-- [ ] **⚠︎** **Connected to a Wi‑Fi network**: click **Use Current**. macOS asks for Location Services once (the prompt explains it's for the Wi‑Fi name); after allowing, the field fills with your network. Add it with Show hidden icons: icons show within 10 s. Join another network or turn Wi‑Fi off: they hide after the delay. Settings → General → Permissions now lists Location Services as Allowed. (Untested whether a hardened, signed build gets the prompt at all.)
+- [ ] **Connected to a Wi‑Fi network**: click **Use Current**. *2026-11-26: the Location Services prompt appears with BarManager's explanation.* Still to check: after **Allow**, the field fills with your network; add it with Show hidden icons and icons show within 10 s; join another network or turn Wi‑Fi off and they hide after the delay; Settings → General → Permissions lists Location Services as Allowed.
 - [ ] Deny Location Services (System Settings → Privacy & Security → Location Services): the New trigger section says the trigger can't start, and the trigger does nothing.
 - [ ] **During certain hours**, set to a window that includes now: icons show within 10 s.
 - [ ] **Running on battery** (laptop): unplug; icons show within 10 s. Plug in; they hide after the delay.
@@ -103,12 +103,12 @@ In Settings → **Triggers**, add each, then check:
 
 ## Appearance
 
-- [ ] **⚠︎** **Tint the menu bar**: the menu bar takes the color, *behind* the icons and app menus. Menus, icons and clicks all work through it. (Untested which layer it lands on; it might cover icons or not show at all.)
+- [x] **Tint the menu bar**: the whole bar takes the color, icons and app menus included. Menus open above it; clicking the arrow and app menus works through it. *Passed 2026-11-26 on macOS 26.7.3.* Strength stops at 60%.
 - [ ] Change the color and strength: it updates at once.
 - [ ] **Line under the menu bar** shows a thin line.
 - [ ] Open a full-screen app: no tint or line over it. Switch back: they return.
 - [ ] With two displays: both menu bars are tinted.
-- [ ] **⚠︎** **Spacers: 2**: two faint dots appear right of the arrow. (Untested where new ones land; note it: ____________) ⌘-drag them between icons. Spacers in the hidden section don't show up in the hidden icons list or search.
+- [x] **Spacers**: a new spacer appears just right of the arrow as a faint dot, and lowering the count removes it. *Passed 2026-11-26 on macOS 26.7.3.* ⌘-drag them between icons. Spacers in the hidden section don't show up in the hidden icons list or search.
 - [ ] Spacers back to 0: they disappear.
 - [ ] **Space between icons → Tight**, log out and back in: icons sit closer together. **Standard** puts it back after another log out and in.
 
@@ -148,6 +148,7 @@ Bugs found, with steps:
 
 - 2026-11-26, fixed: after moving an icon from the Icons tab, ⌘ stayed held down system-wide, so every click anywhere was a ⌘-click (the arrow stopped responding). The posted ⌘-drag events left the ⌘ flag set.
 - 2026-11-26, fixed: the Icons tab and search listed about 9 nameless "Control Center" rows, Control Center modules that have no place in the menu bar (zero size).
-- 2026-11-26, open: the Settings window's tab bar doesn't show its tabs; Accessibility reports them all in the toolbar's overflow (») menu. Needs a screenshot to confirm.
+- 2026-11-26, fixed: the Settings window opened 640 pt wide, too narrow for its seven tabs, so macOS put every tab under the toolbar's » button (and choosing one from there didn't always switch). It now opens at 820 pt and can't be made narrower than 800.
 - 2026-11-26, open: on a crowded notched menu bar, icons macOS has no room for (here Figma, Zoom, Grammarly, Tailscale, TrendAI) report a position at the far left (x≈0). They're listed as Hidden but can't be seen or dragged, and they don't appear in the right-click list.
+- 2026-11-26, fixed: the menu bar tint never showed on macOS 26; it sat under the menu bar's own background. It now lies over the whole bar, icons included.
 - 2026-11-26, open: in the right-click list, Shottr and Battery show as "Hidden Icon" instead of their names.

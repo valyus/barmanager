@@ -145,7 +145,7 @@ A Wi‑Fi network trigger needs **Location Services**: macOS shares the Wi‑Fi 
 Under Settings → **Appearance**:
 
 - **Arrow icon:** the same choices as right-click → Arrow Icon.
-- **Tint the menu bar** with a color and strength, and/or a **line under the menu bar**. Both stay out of the way of clicks and hide when an app goes full screen.
+- **Tint the menu bar** with a color and strength, and/or a **line under the menu bar**. The tint lies over the whole bar like tinted glass, so icons and app menus take on the color too; strength goes up to 60% so they stay readable. Menus open above it, clicks go through it, and both hide when an app goes full screen. (macOS 26 draws the menu bar's own background above anything placed under the icons, so a tint behind them can't show.)
 - **Spacers:** up to 5 blank items with a faint dot. A new one appears just right of the arrow; ⌘-drag it between icons to group them.
 - **Space between icons:** Standard, Compact, Tight or Roomy. This is a macOS-wide setting that each app reads when it starts, so log out and back in to see it everywhere. Standard puts back the macOS default.
 

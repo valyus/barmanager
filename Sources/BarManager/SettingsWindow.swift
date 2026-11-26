@@ -20,12 +20,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         model.tab = tab
         model.revision += 1
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 540),
+            // Wide enough for all seven tabs; narrower and macOS hides every one of them under ».
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "BarManager Settings"
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
-            window.setContentSize(NSSize(width: 640, height: 540))
+            window.setContentSize(NSSize(width: 820, height: 560))
+            window.contentMinSize = NSSize(width: 800, height: 420)
             window.center()
             window.delegate = self
             self.window = window
@@ -130,7 +132,7 @@ private struct SettingsView: View {
             BackupTab(model: model).tabItem { Label("Backup", systemImage: "externaldrive") }.tag(SettingsTab.backup)
         }
         .padding()
-        .frame(minWidth: 600, minHeight: 500)
+        .frame(minWidth: 800, minHeight: 420)
     }
 }
 
@@ -630,15 +632,20 @@ private struct AppearanceTab: View {
                     }
                 }
             }
-            Section("Menu bar") {
+            Section {
                 Toggle("Tint the menu bar", isOn: model.bind({ Settings.tintColor != nil }, { Settings.tintColor = $0 ? "#0A84FF" : nil }))
                 if Settings.tintColor != nil {
                     ColorPicker("Tint color", selection: model.bind({
                         Color(nsColor: MenuBarTint.color(fromHex: Settings.tintColor) ?? .systemBlue)
                     }, { Settings.tintColor = MenuBarTint.hex(from: NSColor($0)) }), supportsOpacity: false)
-                    Slider(value: model.bind({ Settings.tintOpacity }, { Settings.tintOpacity = $0 }), in: 0.05...1) { Text("Strength") }
+                    Slider(value: model.bind({ Settings.tintOpacity }, { Settings.tintOpacity = $0 }), in: 0.05...MenuBarTint.maxOpacity) { Text("Strength") }
                 }
                 Toggle("Line under the menu bar", isOn: model.bind({ Settings.showBorder }, { Settings.showBorder = $0 }))
+            } header: {
+                Text("Menu bar")
+            } footer: {
+                Text("The tint colors the whole menu bar, its icons and menus included, like a sheet of tinted glass. Clicks go through it.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Stepper("Spacers: \(Settings.spacerCount)", value: model.bind({ Settings.spacerCount }, { Settings.spacerCount = $0 }), in: 0...5)
