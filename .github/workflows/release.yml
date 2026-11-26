@@ -22,14 +22,21 @@ env:
   TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  release:
-    runs-on: macos-15
+  # Decide in seconds, not after building, whether signing is set up.
+  # Secrets: DEVELOPER_ID_P12 (base64 of the exported .p12), DEVELOPER_ID_P12_PASSWORD,
+  # NOTARY_KEY_P8 (base64 of AuthKey_XXXX.p8), NOTARY_KEY_ID, NOTARY_ISSUER.
+  # scripts/set-release-secrets.sh uploads them all.
+  #
+  # With none of them set, a tag push skips the release with a notice: that's
+  # what publishing a release by hand does (see README → Releasing without
+  # notarization). A hand run, or only some secrets set, fails instead.
+  secrets:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
     steps:
-      # Fail in seconds, not after building, when something isn't set up.
-      # Secrets: DEVELOPER_ID_P12 (base64 of the exported .p12), DEVELOPER_ID_P12_PASSWORD,
-      # NOTARY_KEY_P8 (base64 of AuthKey_XXXX.p8), NOTARY_KEY_ID, NOTARY_ISSUER.
-      # scripts/set-release-secrets.sh uploads them all.
       - name: Secrets are set
+        id: check
         env:
           DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
           DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
@@ -37,12 +44,30 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
-          missing=0
-          for name in DEVELOPER_ID_P12 DEVELOPER_ID_P12_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER; do
-            if [ -z "${!name}" ]; then echo "::error::The $name secret is missing. See README → Releasing."; missing=1; fi
+          names="DEVELOPER_ID_P12 DEVELOPER_ID_P12_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER"
+          missing=""; count=0
+          for name in $names; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; count=$((count + 1)); fi
           done
-          exit $missing
+          if [ "$count" -eq 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$count" -eq 5 ]; then
+            echo "::notice::No signing or notarization secrets are set, so $TAG isn't built here. Publish it from your Mac (README → Releasing without notarization)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          for name in $missing; do
+            echo "::error::The $name secret is missing. See README → Releasing."
+          done
+          exit 1
 
+  release:
+    needs: secrets
+    if: needs.secrets.outputs.ready == 'true'
+    runs-on: macos-15
+    steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}

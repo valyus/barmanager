@@ -6,6 +6,9 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 
 ## [Unreleased]
 
+### Changed
+- Publishing a release from your Mac no longer sets off a failing Release workflow. Until signing and notarization secrets exist, a tag push skips the workflow with a notice instead. Running it by hand, or with only some secrets set, still fails with the missing ones listed.
+
 ## [1.2.0] - 2026-11-26
 
 Still not notarized by Apple, so the first time you open it, allow it with **Open Anyway** (see the [README](README.md#install)). From this version on, BarManager updates itself, so later versions, including the notarized one, arrive without another download.
