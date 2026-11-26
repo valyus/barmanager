@@ -56,6 +56,19 @@ swift test
 
 The **Release** workflow then tests, signs with Developer ID, notarizes, checks that Gatekeeper accepts the result, and publishes a GitHub release with the `.dmg`, the `.zip` and their checksums, using that version's changelog entry as the notes. If a secret is missing or the certificate isn't a Developer ID, it stops before building rather than publish an unnotarized build.
 
+### Releasing without notarization
+
+Until the Developer ID secrets exist, the Release workflow stops before building, so build and publish from your Mac instead (this is how 1.1.0 and 1.2.0 went out). After steps 1–3 above, with `sparkle-public-key.txt` committed and the update key in your keychain:
+
+```bash
+scripts/build.sh
+scripts/package.sh
+scripts/make-appcast.sh
+gh release create vx.y.z dist/BarManager-x.y.z.dmg dist/BarManager-x.y.z.zip dist/SHA256SUMS-x.y.z.txt dist/appcast.xml --title "BarManager x.y.z" --notes-file <that version's changelog entry>
+```
+
+`appcast.xml` must be attached to every release: installed copies look for it at `releases/latest/download/appcast.xml`. Creating the release creates the tag, which starts the Release workflow; it fails at its secrets check without touching the release.
+
 To replace the files of a release that's already published (like 1.1.0, which went out before notarization was set up), run **Release** by hand from the Actions tab with that tag. It keeps the release notes and swaps in the notarized files.
 
 ### Setting up in-app updates
