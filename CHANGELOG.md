@@ -6,6 +6,10 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-26
+
+Still not notarized by Apple, so the first time you open it, allow it with **Open Anyway** (see the [README](README.md#install)). From this version on, BarManager updates itself, so later versions, including the notarized one, arrive without another download.
+
 ### Added
 - **In-app updates.** BarManager checks for new versions once a day and shows a dot on the arrow and **Install BarManager x.y.z…** at the top of the right-click menu when one is ready. Check by hand with right-click → **Check for Updates…**, or choose automatic checks and installs under Settings → General → Updates. Updates are signed, and BarManager installs only ones signed by its developer. Versions before 1.2.0 can't update themselves, so get this one from GitHub.
 - **Move icons from Settings.** In Settings → Icons, choose Visible, Hidden or Always Hidden next to any icon to move it there. BarManager does the ⌘-drag for you, shows every section while it works, puts the pointer back, then hides icons again as before. If an icon is behind the notch or won't move, it says so.
