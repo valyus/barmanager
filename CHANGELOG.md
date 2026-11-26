@@ -15,6 +15,7 @@ New changes go under **[Unreleased]** as they're made. When releasing, that sect
 - Releases are now checked end to end: the Release workflow stops early if a signing or notarization secret is missing, signs only with Developer ID, signs the `.dmg` too, and checks that Gatekeeper accepts the build before publishing. It can also be run by hand to replace an existing release's files with notarized ones. `scripts/set-release-secrets.sh` checks and uploads the secrets.
 
 ### Fixed
+- The menu bar tint shows again on macOS 26. It now colors the whole bar like tinted glass, icons and app menus included, up to 60% strength.
 - The Settings window opens wide enough to show all its tabs. Before, they were all hidden under a » button.
 - Search and Settings → Icons no longer list empty “Control Center” entries for Control Center modules that aren't in the menu bar.
 

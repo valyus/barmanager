@@ -103,7 +103,7 @@ In Settings → **Triggers**, add each, then check:
 
 ## Appearance
 
-- [ ] **⚠︎** **Tint the menu bar**: the menu bar takes the color, *behind* the icons and app menus. *Fails on macOS 26.7.3: nothing shows at any strength. macOS draws the menu bar opaque at its own level, above the tint; placed above it instead, the tint also covers and dulls every icon and app menu. Needs a decision.*
+- [x] **Tint the menu bar**: the whole bar takes the color, icons and app menus included. Menus open above it; clicking the arrow and app menus works through it. *Passed 2026-11-26 on macOS 26.7.3.* Strength stops at 60%.
 - [ ] Change the color and strength: it updates at once.
 - [ ] **Line under the menu bar** shows a thin line.
 - [ ] Open a full-screen app: no tint or line over it. Switch back: they return.
@@ -150,5 +150,5 @@ Bugs found, with steps:
 - 2026-11-26, fixed: the Icons tab and search listed about 9 nameless "Control Center" rows, Control Center modules that have no place in the menu bar (zero size).
 - 2026-11-26, fixed: the Settings window opened 640 pt wide, too narrow for its seven tabs, so macOS put every tab under the toolbar's » button (and choosing one from there didn't always switch). It now opens at 820 pt and can't be made narrower than 800.
 - 2026-11-26, open: on a crowded notched menu bar, icons macOS has no room for (here Figma, Zoom, Grammarly, Tailscale, TrendAI) report a position at the far left (x≈0). They're listed as Hidden but can't be seen or dragged, and they don't appear in the right-click list.
-- 2026-11-26, open: the menu bar tint never shows on macOS 26 (see Appearance).
+- 2026-11-26, fixed: the menu bar tint never showed on macOS 26; it sat under the menu bar's own background. It now lies over the whole bar, icons included.
 - 2026-11-26, open: in the right-click list, Shottr and Battery show as "Hidden Icon" instead of their names.

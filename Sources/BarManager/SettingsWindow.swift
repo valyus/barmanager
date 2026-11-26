@@ -632,15 +632,20 @@ private struct AppearanceTab: View {
                     }
                 }
             }
-            Section("Menu bar") {
+            Section {
                 Toggle("Tint the menu bar", isOn: model.bind({ Settings.tintColor != nil }, { Settings.tintColor = $0 ? "#0A84FF" : nil }))
                 if Settings.tintColor != nil {
                     ColorPicker("Tint color", selection: model.bind({
                         Color(nsColor: MenuBarTint.color(fromHex: Settings.tintColor) ?? .systemBlue)
                     }, { Settings.tintColor = MenuBarTint.hex(from: NSColor($0)) }), supportsOpacity: false)
-                    Slider(value: model.bind({ Settings.tintOpacity }, { Settings.tintOpacity = $0 }), in: 0.05...1) { Text("Strength") }
+                    Slider(value: model.bind({ Settings.tintOpacity }, { Settings.tintOpacity = $0 }), in: 0.05...MenuBarTint.maxOpacity) { Text("Strength") }
                 }
                 Toggle("Line under the menu bar", isOn: model.bind({ Settings.showBorder }, { Settings.showBorder = $0 }))
+            } header: {
+                Text("Menu bar")
+            } footer: {
+                Text("The tint colors the whole menu bar, its icons and menus included, like a sheet of tinted glass. Clicks go through it.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Stepper("Spacers: \(Settings.spacerCount)", value: model.bind({ Settings.spacerCount }, { Settings.spacerCount = $0 }), in: 0...5)

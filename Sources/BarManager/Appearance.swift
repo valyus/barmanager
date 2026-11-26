@@ -36,6 +36,9 @@ final class MenuBarTint {
                       Int(round(rgb.greenComponent * 255)), Int(round(rgb.blueComponent * 255)))
     }
 
+    /// Stronger than this and the icons under the tint get hard to read.
+    static let maxOpacity = 0.6
+
     func apply() {
         panels.forEach { $0.orderOut(nil) }
         panels = []
@@ -54,13 +57,16 @@ final class MenuBarTint {
             panel.backgroundColor = .clear
             panel.hasShadow = false
             panel.ignoresMouseEvents = true
-            // Above the menu bar's background, below its items and menus.
-            panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) - 1)
+            // On the icons' own level. macOS 26 draws the menu bar opaque above any
+            // lower level, and there's no gap between its background and the icons,
+            // so the tint colors the whole bar, icons and app menus included.
+            // Menus open above it; clicks pass through.
+            panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)))
             panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenNone]
             panel.sharingType = .none
 
             let view = TintView(frame: NSRect(origin: .zero, size: frame.size))
-            view.tint = tint?.withAlphaComponent(Settings.tintOpacity)
+            view.tint = tint?.withAlphaComponent(min(Settings.tintOpacity, Self.maxOpacity))
             view.showBorder = Settings.showBorder
             panel.contentView = view
             panel.orderFrontRegardless()
